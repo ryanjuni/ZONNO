@@ -145,7 +145,7 @@ export default function App() {
               BLOG INDEPENDENTE — EDIÇÃO 01
             </p>
             <h1 className="text-4xl md:text-6xl font-serif font-black tracking-tight text-white max-w-3xl leading-tight mb-6">
-              uma nova forma de ter acesso a informação
+              Em Breve
             </h1>
             <p className="text-lg text-zinc-400 max-w-xl font-normal leading-relaxed">
               Uma coleção de ensaios, cultura e observações para quem prefere perguntas melhores a respostas apressadas.
