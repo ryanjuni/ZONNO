@@ -129,7 +129,7 @@ export default function App() {
 
           <nav className="hidden md:flex space-x-8 text-sm text-zinc-400 font-medium">
             <a href="#" className="hover:text-white transition-colors">Ideias</a>
-            <a href="#" className="hover:text-white transition-colors">Sobre</a>
+            <a href="#" className="hover:text-white transition-colors">Biografia</a>
             <a href="#" className="hover:text-white transition-colors">Novidades</a>
           </nav>
 
