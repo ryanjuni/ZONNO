@@ -1,10 +1,7 @@
-/* 1. Importação Única das Fontes do Google Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Rock+Salt&display=swap');
 
-/* 2. Diretiva Principal do Tailwind CSS v4 */
 @import "tailwindcss";
 
-/* 3. Registro do Tema de Fontes para Utilitários Tailwind */
 @theme {
   --font-serif: 'Instrument Serif', Georgia, serif;
   --font-mono: 'JetBrains Mono', monospace;
@@ -12,7 +9,6 @@
   --font-nova: 'Rock Salt', cursive;
 }
 
-/* 4. Estilos Globais e Reset */
 @layer base {
   :root {
     color-scheme: dark;
@@ -20,6 +16,10 @@
 
   * {
     border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  html {
+    scroll-behavior: smooth;
   }
 
   body {
@@ -32,6 +32,12 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
+    /* Seta Padrão do Sistema */
+    cursor: default;
+  }
+
+  a, button, [role="button"], input, select, textarea {
+    cursor: pointer !important;
   }
 
   ::selection {
@@ -40,9 +46,12 @@
   }
 }
 
-/* 5. Utilitários Customizados para Fundo e Scrollbar */
 @layer utilities {
-  /* Fundo Sofisticado com Iluminação Radial */
+  .pointer-events-none {
+    pointer-events: none;
+    will-change: transform;
+  }
+
   .bg-zonno-pattern {
     background-color: #0f0f0f;
     background-image: 
@@ -51,7 +60,6 @@
     background-attachment: fixed;
   }
 
-  /* Scrollbar Customizada */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
