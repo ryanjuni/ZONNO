@@ -140,80 +140,105 @@ button:focus-visible, a:focus-visible {
     min-height: 42px;
   }
 
-  /* --- OTIMIZAÇÃO DE VISUALIZAÇÃO COMPLETA DO JOGO NO CELULAR --- */
+  /* --- CORREÇÃO DEFINITIVA DE RENDERIZAÇÃO PARA SMARTPHONES (POCO / XIAOMI / ETC) --- */
 
-  /* Enquadramento da caixa do jogo para caber na tela do celular */
-  div[ref="containerRef"] {
-    padding: 0.5rem !important;
+  /* Força o contêiner do jogo a respeitar estritamente a largura máxima da tela sem margens vazadas */
+  div[ref="containerRef"],
+  .p-4.sm\:p-6.bg-zinc-950\/80 {
+    padding: 0.35rem !important;
     border-radius: 0.75rem !important;
     width: 100% !important;
-    max-width: 100vw !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
   }
 
-  /* Container interno do Canvas: Mantém aspecto e escala todo o jogo */
-  div[ref="containerRef"] > div.relative {
-    min-height: 320px !important;
-    max-height: 52vh !important;
+  /* Container interno do Canvas: Fixa proporção exata e impede estouro de layout */
+  .w-full.bg-black.rounded-xl.border {
+    min-height: 300px !important;
+    max-height: 44vh !important;
     width: 100% !important;
+    position: relative !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     overflow: hidden !important;
   }
 
-  /* Canvas com redimensionamento proporcional e sem corte no mapa */
+  /* Canvas flexível sem distorção e sem travar proporções */
   canvas {
     width: 100% !important;
     height: 100% !important;
-    object-fit: contain !important;
+    object-fit: fill !important;
     touch-action: none !important;
+    display: block !important;
   }
 
-  /* HUD Superior compacto */
-  .hud-header {
+  /* HUD Superior organizado em linha flexível compacta */
+  .hud-header,
+  .flex.flex-wrap.items-center.justify-between {
     flex-direction: row !important;
-    flex-wrap: wrap !important;
-    font-size: 0.7rem !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    font-size: 0.65rem !important;
+    gap: 0.25rem !important;
   }
 
-  /* Controles virtuais reposicionados para não cobrir o labirinto */
+  .hud-header h3,
+  .flex.items-center.space-x-3 h3 {
+    font-size: 0.7rem !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 120px !important;
+  }
+
+  /* Controles virtuais D-Pad reposicionados para evitar sobreposição */
   .absolute.left-3.bottom-3 {
-    left: 0.35rem !important;
-    bottom: 0.35rem !important;
+    left: 0.25rem !important;
+    bottom: 0.25rem !important;
     z-index: 40 !important;
   }
 
-  /* Redimensionamento dos botões para caberem confortavelmente na tela */
+  /* Redimensionamento responsivo ideal dos botões direcionais táteis */
   .absolute.left-3.bottom-3 button {
-    width: 2.2rem !important;
-    height: 2.2rem !important;
-    font-size: 0.75rem !important;
-    background-color: rgba(24, 24, 27, 0.85) !important;
+    width: 2rem !important;
+    height: 2rem !important;
+    font-size: 0.7rem !important;
+    background-color: rgba(24, 24, 27, 0.9) !important;
     backdrop-filter: blur(4px);
+    border-radius: 0.35rem !important;
   }
 
-  /* Modais de Pausa/GameOver centralizados e ajustados à tela mobile */
+  /* Modais de Pausa / Início / Game Over perfeitamente contidos no celular */
   .absolute.inset-0.bg-black\/85 {
-    padding: 1rem !important;
+    padding: 0.75rem !important;
     z-index: 50 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
   }
 
   .absolute.inset-0.bg-black\/85 button {
-    width: 90% !important;
-    max-width: 220px !important;
-    padding: 0.6rem 1rem !important;
+    width: 85% !important;
+    max-width: 200px !important;
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.75rem !important;
   }
 }
 
-/* Ajuste fino para smartphones com telas estreitas (< 380px) */
+/* Ajuste fino para telas ultra-estreitas (< 380px) */
 @media (max-width: 380px) {
-  div[ref="containerRef"] > div.relative {
-    min-height: 280px !important;
-    max-height: 48vh !important;
+  .w-full.bg-black.rounded-xl.border {
+    min-height: 260px !important;
+    max-height: 40vh !important;
   }
 
   .absolute.left-3.bottom-3 button {
-    width: 1.9rem !important;
-    height: 1.9rem !important;
+    width: 1.75rem !important;
+    height: 1.75rem !important;
   }
 }
