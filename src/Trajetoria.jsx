@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// --- MINI-GAME: PAC-SLIME 3D GLOSSY (SWIPE & TOUCH JOYPAD UPDATE) ---
+// --- MINI-GAME: PAC-SLIME 3D GLOSSY (AUTO-PROGRESSIVE PHASES & GHOST HUNTER) ---
 function DinoGame() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -9,12 +9,14 @@ function DinoGame() {
   const [highScore, setHighScore] = useState(0);
   const [playerHp, setPlayerHp] = useState(3);
   const [level, setLevel] = useState(1);
+  const [ghostsLeft, setGhostsLeft] = useState(4);
+  const [caughtCount, setCaughtCount] = useState(0); // Quantas vezes o jogador foi pego
 
   // Estados dos Poderes
   const [powerTimer, setPowerTimer] = useState(0);
   const [activeFruitText, setActiveFruitText] = useState('');
 
-  // Estados de Controle por Toque / Joystick Circular
+  // Estados de Controle por Toque / Swipe
   const touchStartRef = useRef({ x: 0, y: 0 });
   const joypadRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -59,21 +61,45 @@ function DinoGame() {
       vy: 0,
       nextVx: 2.0,
       nextVy: 0,
-      speed: 2.2 + level * 0.15,
+      speed: 2.2 + level * 0.1,
       powerTimer: 0,
-      powerType: 'NONE',
+      powerType: 'NONE', // 'TITAN', 'SPEED', 'SHIELD'
       slimeColor: '#10b981',
       invulnerableTimer: 0,
     };
 
-    // --- FANTASMAS COM ANTITRAVAMENTO ---
-    const baseSpeed = 1.2 + level * 0.15;
-    let ghosts = [
-      { id: 'BLINKY', x: 11.5 * TILE_SIZE, y: 1.5 * TILE_SIZE, dirX: -1, dirY: 0, speed: baseSpeed * 1.05, color: '#ff2a5f', lastX: 0, lastY: 0, stuckFrames: 0 },
-      { id: 'PINKY', x: 11.5 * TILE_SIZE, y: 11.5 * TILE_SIZE, dirX: 0, dirY: -1, speed: baseSpeed, color: '#ff77bc', lastX: 0, lastY: 0, stuckFrames: 0 },
-      { id: 'INKY', x: 1.5 * TILE_SIZE, y: 11.5 * TILE_SIZE, dirX: 1, dirY: 0, speed: baseSpeed * 0.95, color: '#00e5ff', lastX: 0, lastY: 0, stuckFrames: 0 },
-      { id: 'CLYDE', x: 6.5 * TILE_SIZE, y: 6.5 * TILE_SIZE, dirX: 0, dirY: 1, speed: baseSpeed * 0.9, color: '#ff9100', lastX: 0, lastY: 0, stuckFrames: 0 },
+    // --- FANTASMAS DINÂMICOS (Aumentam em quantidade e inteligência por fase) ---
+    const baseSpeed = 1.2 + level * 0.12;
+    const ghostColors = ['#ff2a5f', '#ff77bc', '#00e5ff', '#ff9100', '#a855f7', '#3b82f6'];
+    const spawnPoints = [
+      { x: 11.5 * TILE_SIZE, y: 1.5 * TILE_SIZE },
+      { x: 11.5 * TILE_SIZE, y: 11.5 * TILE_SIZE },
+      { x: 1.5 * TILE_SIZE, y: 11.5 * TILE_SIZE },
+      { x: 6.5 * TILE_SIZE, y: 6.5 * TILE_SIZE },
+      { x: 1.5 * TILE_SIZE, y: 6.5 * TILE_SIZE },
+      { x: 11.5 * TILE_SIZE, y: 6.5 * TILE_SIZE },
     ];
+
+    let ghosts = [];
+    const totalGhostsInLevel = Math.min(3 + level, spawnPoints.length); // Mais polícia por fase!
+
+    for (let i = 0; i < totalGhostsInLevel; i++) {
+      ghosts.push({
+        id: `GHOST_${i}`,
+        x: spawnPoints[i].x,
+        y: spawnPoints[i].y,
+        dirX: i % 2 === 0 ? 1 : -1,
+        dirY: i % 2 !== 0 ? 1 : -1,
+        speed: baseSpeed * (0.9 + i * 0.05),
+        color: ghostColors[i % ghostColors.length],
+        lastX: 0,
+        lastY: 0,
+        stuckFrames: 0,
+        active: true, // Vivo no mapa
+      });
+    }
+
+    setGhostsLeft(totalGhostsInLevel);
 
     let pacDots = [];
     let powerFruits = [];
@@ -107,7 +133,7 @@ function DinoGame() {
       const keysToBlock = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'W', 's', 'S', 'a', 'A', 'd', 'D'];
       if (keysToBlock.includes(e.key)) e.preventDefault();
 
-      const speed = slime.powerType === 'SPEED' ? 3.2 : slime.speed;
+      const speed = slime.powerType === 'SPEED' ? 3.4 : slime.speed;
 
       if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { slime.nextVx = 0; slime.nextVy = -speed; }
       if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { slime.nextVx = 0; slime.nextVy = speed; }
@@ -120,7 +146,7 @@ function DinoGame() {
     window.addEventListener('keydown', handleKeyDown, { passive: false });
 
     window.triggerAction = (dir) => {
-      const speed = slime.powerType === 'SPEED' ? 3.2 : slime.speed;
+      const speed = slime.powerType === 'SPEED' ? 3.4 : slime.speed;
       if (dir === 'UP') { slime.nextVx = 0; slime.nextVy = -speed; }
       if (dir === 'DOWN') { slime.nextVx = 0; slime.nextVy = speed; }
       if (dir === 'LEFT') { slime.nextVx = -speed; slime.nextVy = 0; }
@@ -179,6 +205,7 @@ function DinoGame() {
     };
 
     const updateGhostAI = (ghost, isTitan) => {
+      if (!ghost.active) return;
       const gx = Math.floor(ghost.x / TILE_SIZE);
       const gy = Math.floor(ghost.y / TILE_SIZE);
 
@@ -190,7 +217,7 @@ function DinoGame() {
       ghost.lastX = ghost.x;
       ghost.lastY = ghost.y;
 
-      const curSpeed = isTitan ? ghost.speed * 0.6 : ghost.speed;
+      const curSpeed = isTitan ? ghost.speed * 0.5 : ghost.speed;
 
       const nextCellX = Math.floor((ghost.x + ghost.dirX * (TILE_SIZE * 0.55)) / TILE_SIZE);
       const nextCellY = Math.floor((ghost.y + ghost.dirY * (TILE_SIZE * 0.55)) / TILE_SIZE);
@@ -214,18 +241,6 @@ function DinoGame() {
           if (isTitan) {
             targetGx = slimeGx > 6 ? 1 : 11;
             targetGy = slimeGy > 6 ? 1 : 11;
-          } else {
-            if (ghost.id === 'PINKY') {
-              const sDirX = slime.vx > 0 ? 1 : slime.vx < 0 ? -1 : 0;
-              const sDirY = slime.vy > 0 ? 1 : slime.vy < 0 ? -1 : 0;
-              targetGx = Math.max(1, Math.min(11, slimeGx + sDirX * 2));
-              targetGy = Math.max(1, Math.min(11, slimeGy + sDirY * 2));
-            } else if (ghost.id === 'CLYDE') {
-              if (Math.hypot(gx - slimeGx, gy - slimeGy) < 3) {
-                targetGx = 1;
-                targetGy = 11;
-              }
-            }
           }
 
           const possibleMoves = [
@@ -293,7 +308,8 @@ function DinoGame() {
         slime.y = moveY;
       }
 
-      if (frame % 200 === 0) {
+      // SPAWN AUTOMÁTICO DE FRUTAS ESPECIAIS COM PODERES VARIADOS
+      if (frame % 180 === 0) {
         const freeCells = [];
         for (let r = 0; r < MAP_SIZE; r++) {
           for (let c = 0; c < MAP_SIZE; c++) {
@@ -302,11 +318,11 @@ function DinoGame() {
         }
         if (freeCells.length > 0) {
           const randCell = freeCells[Math.floor(Math.random() * freeCells.length)];
-          const types = ['TITAN_STRAWBERRY', 'SPEED_LEMON', 'SHIELD_ORB'];
+          const fruitTypes = ['TITAN_STRAWBERRY', 'SPEED_LEMON', 'SHIELD_ORB', 'GOLDEN_CHERRY'];
           powerFruits.push({
             x: randCell.x,
             y: randCell.y,
-            type: types[Math.floor(Math.random() * types.length)],
+            type: fruitTypes[Math.floor(Math.random() * fruitTypes.length)],
           });
         }
       }
@@ -346,7 +362,12 @@ function DinoGame() {
         }
       }
 
-      if (pacDots.length === 0) {
+      // CONTAGEM DE FANTASMAS ATIVOS
+      const activeGhosts = ghosts.filter(g => g.active);
+      setGhostsLeft(activeGhosts.length);
+
+      // SE TODOS OS FANTASMAS FOREM CAPTURADOS -> AVANÇA DE FASE AUTOMATICAMENTE!
+      if (activeGhosts.length === 0) {
         setLevel((prev) => prev + 1);
         setGameState('LEVEL_WIN');
         return;
@@ -355,41 +376,46 @@ function DinoGame() {
       for (let i = powerFruits.length - 1; i >= 0; i--) {
         const f = powerFruits[i];
         const { isoX, isoY } = toIso(f.x, f.y, 6 + Math.sin(frame * 0.1) * 3);
-        const fColor = f.type === 'TITAN_STRAWBERRY' ? '#a855f7' : f.type === 'SPEED_LEMON' ? '#ffea00' : '#00e5ff';
+        const fColor = f.type === 'TITAN_STRAWBERRY' ? '#a855f7' : f.type === 'SPEED_LEMON' ? '#ffea00' : f.type === 'SHIELD_ORB' ? '#00e5ff' : '#fbbf24';
 
         ctx.save();
         ctx.shadowColor = fColor;
         ctx.shadowBlur = 14;
         ctx.fillStyle = fColor;
         ctx.beginPath();
-        ctx.arc(isoX, isoY, 7, 0, Math.PI * 2);
+        ctx.arc(isoX, isoY, 8, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
         if (Math.hypot(slime.x - f.x, slime.y - f.y) < 16) {
-          slime.powerTimer = 260;
-          setPowerTimer(260);
+          slime.powerTimer = 300;
+          setPowerTimer(300);
 
           if (f.type === 'TITAN_STRAWBERRY') {
             slime.powerType = 'TITAN';
             slime.slimeColor = '#bd00ff';
-            setActiveFruitText('🍓 MODO TITÃ (PURPLE SLIME)');
+            setActiveFruitText('🍓 MODO TITÃ: DEVORE OS FANTASMAS!');
           } else if (f.type === 'SPEED_LEMON') {
             slime.powerType = 'SPEED';
             slime.slimeColor = '#ffea00';
-            setActiveFruitText('⚡ MODO TURBO (YELLOW SLIME)');
+            setActiveFruitText('⚡ MODO TURBO ATIVADO!');
           } else if (f.type === 'SHIELD_ORB') {
             slime.powerType = 'SHIELD';
             slime.slimeColor = '#00e5ff';
-            setActiveFruitText('🛡️ BARREIRA GLOSSY (BLUE SLIME)');
+            setActiveFruitText('🛡️ BARREIRA PROTETORA GLOSSY!');
+          } else if (f.type === 'GOLDEN_CHERRY') {
+            currentScore += 500;
+            setScore(currentScore);
+            setActiveFruitText('🍒 CEREJA DOURADA (+500 PONTOS)!');
           }
 
-          createParticles(f.x, f.y, fColor, 15);
+          createParticles(f.x, f.y, fColor, 18);
           powerFruits.splice(i, 1);
-          setTimeout(() => setActiveFruitText(''), 2000);
+          setTimeout(() => setActiveFruitText(''), 2200);
         }
       }
 
+      // --- 4. RENDERIZAÇÃO Z-SORTING ---
       const renderList = [];
 
       for (let r = 0; r < MAP_SIZE; r++) {
@@ -407,6 +433,7 @@ function DinoGame() {
       const isTitan = slime.powerType === 'TITAN';
 
       ghosts.forEach((ghost) => {
+        if (!ghost.active) return;
         updateGhostAI(ghost, isTitan);
 
         renderList.push({
@@ -415,13 +442,13 @@ function DinoGame() {
           sortKey: (ghost.y / TILE_SIZE) + (ghost.x / TILE_SIZE) - 0.05,
         });
 
+        // Colisão Slime x Fantasma
         if (Math.hypot(slime.x - ghost.x, slime.y - ghost.y) < 16) {
           if (isTitan) {
-            currentScore += 200;
+            ghost.active = false; // CAPTURA PERMANENTE DO FANTASMA NA FASE
+            currentScore += 300;
             setScore(currentScore);
-            ghost.x = 6.5 * TILE_SIZE;
-            ghost.y = 6.5 * TILE_SIZE;
-            createParticles(ghost.x, ghost.y, '#2563eb', 18);
+            createParticles(ghost.x, ghost.y, '#bd00ff', 25);
           } else if (slime.powerType === 'SHIELD') {
             slime.powerType = 'NONE';
             slime.slimeColor = '#10b981';
@@ -430,6 +457,7 @@ function DinoGame() {
             createParticles(ghost.x, ghost.y, '#00e5ff', 18);
           } else if (slime.invulnerableTimer === 0) {
             slime.invulnerableTimer = 60;
+            setCaughtCount((prev) => prev + 1); // Incrementa quantas vezes foi pego
             setPlayerHp((prev) => {
               const newHp = prev - 1;
               if (newHp <= 0) {
@@ -472,7 +500,7 @@ function DinoGame() {
         } else if (item.type === 'GHOST') {
           const ghost = item.ghost;
           const { isoX: gX, isoY: gY } = toIso(ghost.x, ghost.y, 12 + Math.sin(frame * 0.15) * 3);
-          const gColor = isTitan ? '#2563eb' : ghost.color;
+          const gColor = isTitan ? '#bd00ff' : ghost.color;
 
           ctx.save();
           ctx.shadowColor = gColor;
@@ -591,7 +619,7 @@ function DinoGame() {
         <div className="flex items-center space-x-3">
           <span className="w-2.5 h-2.5 rounded bg-emerald-400 animate-pulse" />
           <h3 className="text-emerald-400 font-bold uppercase tracking-wider text-xs">
-            PAC-SLIME 3D (FASE {level})
+            FASE {level} | FANTASMAS: <span className="text-white font-bold">{ghostsLeft}</span>
           </h3>
           
           <div className="flex items-center space-x-1 pl-1">
@@ -608,14 +636,14 @@ function DinoGame() {
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
+          <span className="text-red-400">PEGOS: {caughtCount}x</span>
           <button
             onClick={() => setGameState((prev) => (prev === 'PLAYING' ? 'PAUSED' : 'PLAYING'))}
             className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded border border-zinc-700"
           >
-            {gameState === 'PAUSED' ? 'RETOMAR [P]' : 'PAUSAR [P]'}
+            {gameState === 'PAUSED' ? 'RETOMAR' : 'PAUSAR'}
           </button>
-          <span className="text-zinc-500">HI: {highScore}</span>
           <span className="text-zinc-200 font-bold">SCORE: {score}</span>
         </div>
       </div>
@@ -630,7 +658,7 @@ function DinoGame() {
       >
         {powerTimer > 0 && (
           <div className="absolute top-4 bg-yellow-400 text-black px-4 py-1 font-bold rounded-lg z-30 animate-bounce text-xs">
-            ⚡ PODER ATIVO! ({Math.ceil(powerTimer / 30)}s)
+            ⚡ PODER ATIVO! ({Math.ceil(powerTimer / 30)}s) - CAPTURE A POLÍCIA!
           </div>
         )}
 
@@ -643,15 +671,16 @@ function DinoGame() {
         {/* TELA DE INÍCIO CENTRALIZADA */}
         {gameState === 'IDLE' && (
           <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <h2 className="text-emerald-400 font-bold text-xl tracking-wider uppercase">PAC-SLIME 3D GLOSSY</h2>
+            <h2 className="text-emerald-400 font-bold text-xl tracking-wider uppercase">PAC-SLIME 3D GHOST HUNTER</h2>
             <p className="text-zinc-300 font-sans text-xs max-w-sm leading-relaxed">
-              Arraste o dedo em qualquer lugar da tela para mover o Pac-Slime com o Joystick Tátil Fluido!
+              Arraste o dedo na tela para mover. Pegue frutas de poder para devorar os fantasmas. Elimine todos para avançar automaticamente de fase!
             </p>
             <button
               onClick={() => {
                 setScore(0);
                 setLevel(1);
                 setPlayerHp(3);
+                setCaughtCount(0);
                 setGameState('PLAYING');
               }}
               className="px-8 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(52,211,153,0.4)] cursor-pointer text-sm"
@@ -661,16 +690,16 @@ function DinoGame() {
           </div>
         )}
 
-        {/* TELA DE FASE CONCLUÍDA CENTRALIZADA */}
+        {/* TELA DE FASE CONCLUÍDA AUTOMÁTICA */}
         {gameState === 'LEVEL_WIN' && (
           <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <p className="text-emerald-400 font-bold text-lg tracking-widest uppercase">FASE {level - 1} CONCLUÍDA!</p>
-            <p className="text-zinc-300 font-mono">Próxima fase com fantasmas mais rápidos e espertos!</p>
+            <p className="text-emerald-400 font-bold text-lg tracking-widest uppercase">FASE {level - 1} SUPERADA!</p>
+            <p className="text-zinc-300 font-mono">Você eliminou todos os fantasmas! Preparando Fase {level} com mais polícia...</p>
             <button
               onClick={() => setGameState('PLAYING')}
               className="px-8 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(52,211,153,0.4)] cursor-pointer text-sm"
             >
-              IR PARA FASE {level}
+              INICIAR FASE {level}
             </button>
           </div>
         )}
@@ -691,13 +720,14 @@ function DinoGame() {
         {/* TELA DE GAME OVER CENTRALIZADA */}
         {gameState === 'GAMEOVER' && (
           <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <p className="text-red-500 font-bold text-lg tracking-widest uppercase">Pac-Slime Capturado!</p>
-            <p className="text-zinc-300 font-mono">Pontuação Final: {score} | Alcançou Fase {level}</p>
+            <p className="text-red-500 font-bold text-lg tracking-widest uppercase">Game Over!</p>
+            <p className="text-zinc-300 font-mono">Pontuação Final: {score} | Fantasmas te pegaram: {caughtCount} vezes</p>
             <button
               onClick={() => {
                 setLevel(1);
                 setPlayerHp(3);
                 setScore(0);
+                setCaughtCount(0);
                 setGameState('PLAYING');
               }}
               className="px-8 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(52,211,153,0.4)] cursor-pointer text-sm"
@@ -707,7 +737,7 @@ function DinoGame() {
           </div>
         )}
 
-        {/* INDICADOR VISUAL DO JOYSTICK TÁTIL (APARECE AO ARRASTAR) */}
+        {/* INDICADOR VISUAL DO JOYSTICK TÁTIL */}
         {isDragging && gameState === 'PLAYING' && (
           <div 
             className="absolute w-14 h-14 rounded-full border-2 border-emerald-400/50 bg-emerald-500/10 pointer-events-none z-40 transform -translate-x-1/2 -translate-y-1/2 transition-all duration-75"
