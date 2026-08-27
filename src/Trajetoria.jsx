@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// --- MINI-GAME: PAC-SLIME 3D GLOSSY (MOBILE D-PAD REWORKED) ---
+// --- MINI-GAME: PAC-SLIME 3D GLOSSY (SWIPE & TOUCH JOYPAD UPDATE) ---
 function DinoGame() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -13,6 +13,12 @@ function DinoGame() {
   // Estados dos Poderes
   const [powerTimer, setPowerTimer] = useState(0);
   const [activeFruitText, setActiveFruitText] = useState('');
+
+  // Estados de Controle por Toque / Joystick Circular
+  const touchStartRef = useRef({ x: 0, y: 0 });
+  const joypadRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [joyPos, setJoyPos] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     if (gameState !== 'PLAYING') return;
@@ -55,7 +61,7 @@ function DinoGame() {
       nextVy: 0,
       speed: 2.2 + level * 0.15,
       powerTimer: 0,
-      powerType: 'NONE', // 'TITAN', 'SPEED', 'SHIELD'
+      powerType: 'NONE',
       slimeColor: '#10b981',
       invulnerableTimer: 0,
     };
@@ -88,7 +94,6 @@ function DinoGame() {
       return MAZE_MAP[gy][gx] === 0;
     };
 
-    // PROJEÇÃO ISOMÉTRICA DINÂMICA
     const toIso = (worldX, worldY, heightOffset = 0) => {
       const relX = (worldX - slime.x) / TILE_SIZE;
       const relY = (worldY - slime.y) / TILE_SIZE;
@@ -137,7 +142,6 @@ function DinoGame() {
       }
     };
 
-    // RENDERIZADOR DOS MUROS 3D
     const draw3DWall = (c, r) => {
       const { isoX, isoY } = toIso((c + 0.5) * TILE_SIZE, (r + 0.5) * TILE_SIZE);
       const wallH = 26;
@@ -174,7 +178,6 @@ function DinoGame() {
       ctx.fill();
     };
 
-    // IA ANTITRAVAMENTO DOS FANTASMAS
     const updateGhostAI = (ghost, isTitan) => {
       const gx = Math.floor(ghost.x / TILE_SIZE);
       const gy = Math.floor(ghost.y / TILE_SIZE);
@@ -270,7 +273,6 @@ function DinoGame() {
 
       if (slime.invulnerableTimer > 0) slime.invulnerableTimer--;
 
-      // MOVIMENTAÇÃO DO PAC-SLIME
       const testNextX = slime.x + slime.nextVx;
       const testNextY = slime.y + slime.nextVy;
       const checkNextGx = Math.floor((testNextX + (slime.nextVx > 0 ? 6 : slime.nextVx < 0 ? -6 : 0)) / TILE_SIZE);
@@ -291,7 +293,6 @@ function DinoGame() {
         slime.y = moveY;
       }
 
-      // SPAWN FRUTAS
       if (frame % 200 === 0) {
         const freeCells = [];
         for (let r = 0; r < MAP_SIZE; r++) {
@@ -310,7 +311,6 @@ function DinoGame() {
         }
       }
 
-      // 1. CHÃO DA MATRIZ
       for (let r = 0; r < MAP_SIZE; r++) {
         for (let c = 0; c < MAP_SIZE; c++) {
           const { isoX, isoY } = toIso((c + 0.5) * TILE_SIZE, (r + 0.5) * TILE_SIZE);
@@ -329,7 +329,6 @@ function DinoGame() {
         }
       }
 
-      // 2. PAC-DOTS
       for (let i = pacDots.length - 1; i >= 0; i--) {
         const dot = pacDots[i];
         const { isoX, isoY } = toIso(dot.x, dot.y);
@@ -353,7 +352,6 @@ function DinoGame() {
         return;
       }
 
-      // 3. FRUTAS DE PODER
       for (let i = powerFruits.length - 1; i >= 0; i--) {
         const f = powerFruits[i];
         const { isoX, isoY } = toIso(f.x, f.y, 6 + Math.sin(frame * 0.1) * 3);
@@ -392,7 +390,6 @@ function DinoGame() {
         }
       }
 
-      // --- 4. RENDERIZAÇÃO Z-SORTING ---
       const renderList = [];
 
       for (let r = 0; r < MAP_SIZE; r++) {
@@ -418,7 +415,6 @@ function DinoGame() {
           sortKey: (ghost.y / TILE_SIZE) + (ghost.x / TILE_SIZE) - 0.05,
         });
 
-        // Colisão
         if (Math.hypot(slime.x - ghost.x, slime.y - ghost.y) < 16) {
           if (isTitan) {
             currentScore += 200;
@@ -549,6 +545,42 @@ function DinoGame() {
     };
   }, [gameState, level]);
 
+  // Handlers para o Joystick Touch / Arrastar na tela
+  const handleTouchStart = (e) => {
+    if (gameState !== 'PLAYING') return;
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    setIsDragging(true);
+    setJoyPos({ x: touch.clientX, y: touch.clientY });
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging || gameState !== 'PLAYING') return;
+    const touch = e.touches[0];
+    const dX = touch.clientX - touchStartRef.current.x;
+    const dY = touch.clientY - touchStartRef.current.y;
+
+    const limit = 35;
+    const clampedX = Math.max(-limit, Math.min(limit, dX));
+    const clampedY = Math.max(-limit, Math.min(limit, dY));
+    setJoyPos({ x: touchStartRef.current.x + clampedX, y: touchStartRef.current.y + clampedY });
+
+    if (Math.abs(dX) > 12 || Math.abs(dY) > 12) {
+      if (Math.abs(dX) > Math.abs(dY)) {
+        if (dX > 0) window.triggerAction && window.triggerAction('RIGHT');
+        else window.triggerAction && window.triggerAction('LEFT');
+      } else {
+        if (dY > 0) window.triggerAction && window.triggerAction('DOWN');
+        else window.triggerAction && window.triggerAction('UP');
+      }
+      touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+
   return (
     <div 
       ref={containerRef}
@@ -581,15 +613,21 @@ function DinoGame() {
             onClick={() => setGameState((prev) => (prev === 'PLAYING' ? 'PAUSED' : 'PLAYING'))}
             className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded border border-zinc-700"
           >
-            {gameState === 'PLAYING' ? 'RETOMAR [P]' : 'PAUSAR [P]'}
+            {gameState === 'PAUSED' ? 'RETOMAR [P]' : 'PAUSAR [P]'}
           </button>
           <span className="text-zinc-500">HI: {highScore}</span>
           <span className="text-zinc-200 font-bold">SCORE: {score}</span>
         </div>
       </div>
 
-      {/* ÁREA DE JOGO COM POP-UPS CENTRALIZADOS */}
-      <div className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative min-h-[360px] max-h-[460px] flex items-center justify-center select-none touch-none">
+      {/* ÁREA DE JOGO COM SUPORTE A SWIPE / JOYPAD TÁTIL */}
+      <div 
+        ref={joypadRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative min-h-[360px] max-h-[460px] flex items-center justify-center select-none touch-none"
+      >
         {powerTimer > 0 && (
           <div className="absolute top-4 bg-yellow-400 text-black px-4 py-1 font-bold rounded-lg z-30 animate-bounce text-xs">
             ⚡ PODER ATIVO! ({Math.ceil(powerTimer / 30)}s)
@@ -607,7 +645,7 @@ function DinoGame() {
           <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
             <h2 className="text-emerald-400 font-bold text-xl tracking-wider uppercase">PAC-SLIME 3D GLOSSY</h2>
             <p className="text-zinc-300 font-sans text-xs max-w-sm leading-relaxed">
-              Explore o labirinto 3D centralizado, devore as frutas de poder com troca de cor e supere a inteligência fluida dos fantasmas!
+              Arraste o dedo em qualquer lugar da tela para mover o Pac-Slime com o Joystick Tátil Fluido!
             </p>
             <button
               onClick={() => {
@@ -669,38 +707,13 @@ function DinoGame() {
           </div>
         )}
 
-        {/* CONTROLES VIRTUAIS TIPO D-PAD ERGONÔMICO MODERNO PARA MOBILE */}
-        {gameState === 'PLAYING' && (
-          <div className="absolute left-3 bottom-3 z-20 flex flex-col items-center select-none touch-none scale-90 sm:scale-100 origin-bottom-left">
-            {/* Cima */}
-            <button
-              onClick={() => window.triggerAction && window.triggerAction('UP')}
-              className="w-11 h-11 bg-zinc-900/90 active:bg-emerald-500 text-zinc-100 font-bold rounded-t-xl flex items-center justify-center border border-zinc-700/80 shadow-lg active:scale-95 transition-transform"
-            >
-              ▲
-            </button>
-            {/* Meio (Esquerda e Direita) */}
-            <div className="flex gap-7">
-              <button
-                onClick={() => window.triggerAction && window.triggerAction('LEFT')}
-                className="w-11 h-11 bg-zinc-900/90 active:bg-emerald-500 text-zinc-100 font-bold rounded-l-xl flex items-center justify-center border border-zinc-700/80 shadow-lg active:scale-95 transition-transform"
-              >
-                ◀
-              </button>
-              <button
-                onClick={() => window.triggerAction && window.triggerAction('RIGHT')}
-                className="w-11 h-11 bg-zinc-900/90 active:bg-emerald-500 text-zinc-100 font-bold rounded-r-xl flex items-center justify-center border border-zinc-700/80 shadow-lg active:scale-95 transition-transform"
-              >
-                ▶
-              </button>
-            </div>
-            {/* Baixo */}
-            <button
-              onClick={() => window.triggerAction && window.triggerAction('DOWN')}
-              className="w-11 h-11 bg-zinc-900/90 active:bg-emerald-500 text-zinc-100 font-bold rounded-b-xl flex items-center justify-center border border-zinc-700/80 shadow-lg active:scale-95 transition-transform"
-            >
-              ▼
-            </button>
+        {/* INDICADOR VISUAL DO JOYSTICK TÁTIL (APARECE AO ARRASTAR) */}
+        {isDragging && gameState === 'PLAYING' && (
+          <div 
+            className="absolute w-14 h-14 rounded-full border-2 border-emerald-400/50 bg-emerald-500/10 pointer-events-none z-40 transform -translate-x-1/2 -translate-y-1/2 transition-all duration-75"
+            style={{ left: `${joyPos.x}px`, top: `${joyPos.y}px` }}
+          >
+            <div className="absolute w-5 h-5 bg-emerald-400 rounded-full shadow-[0_0_10px_#10b981] top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
           </div>
         )}
 
