@@ -3,8 +3,9 @@ import './App.css';
 import Sobre from './Sobre';
 import Acervo from './Acervo';
 import Trajetoria from './Trajetoria';
+import Stack from './Stack';
 
-// Cursor Dinâmico: Oculto quando parado e com Rastro Suave ao Mover
+// --- CURSOR DINÂMICO DE RASTRO SUAVE ---
 function CursorFireTrail() {
   const coordsRef = useRef({ x: -100, y: -100 });
   const prevCoordsRef = useRef({ x: -100, y: -100 });
@@ -119,7 +120,7 @@ function CursorFireTrail() {
   );
 }
 
-// Componente do Fundo Animado Base
+// --- FLUID BACKGROUND ---
 function FluidBackground() {
   const canvasRef = useRef(null);
 
@@ -215,7 +216,7 @@ function FluidBackground() {
   );
 }
 
-// Canvas 3D Interativo do Inventário
+// --- CANVAS 3D INTERATIVO DA HOME ---
 function FloatingParticlesWave3D() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -498,144 +499,248 @@ function FloatingParticlesWave3D() {
   );
 }
 
+// --- RECURSO: AUTÔMATOS CELULARES & REDES COMPLEXAS ---
+function GraphTheoryModal({ isOpen, onClose }) {
+  const canvasRef = useRef(null);
+  const [metric, setMetric] = useState({ nodes: 14, edges: 26, splits: 0 });
 
-function Stack() {
-  const categorias = [
-    {
-      nome: 'LINGUAGENS & CORE',
-      itens: ['C / C++', 'Python', 'JavaScript (ES6+)', 'TypeScript', 'SQL', 'Java'],
-    },
-    {
-      nome: 'FRONTEND & RENDERIZAÇÃO',
-      itens: ['React', 'Tailwind CSS (v4)', 'Canvas API', 'WebGL / 3D Graphics', 'Vite'],
-    },
-    {
-      nome: 'FERRAMENTAS & SISTEMAS',
-      itens: ['Git & GitHub', 'Linux (Bash/Shell)', 'Docker', 'REST APIs', 'VS Code'],
-    },
-  ];
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    let animationFrameId;
+    let width = (canvas.width = canvas.parentElement.clientWidth);
+    let height = (canvas.height = 320);
+
+    const clusterColors = ['#34d399', '#f59e0b', '#38bdf8', '#a855f7'];
+
+    class AutonomousNode {
+      constructor(x, y, cluster = 0, initialCapacity = 35) {
+        this.x = x || Math.random() * (width - 100) + 50;
+        this.y = y || Math.random() * (height - 100) + 50;
+        this.vx = (Math.random() - 0.5) * 1.2;
+        this.vy = (Math.random() - 0.5) * 1.2;
+        this.capacity = initialCapacity;
+        this.cluster = cluster;
+        this.isSplitting = false;
+      }
+
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+
+        if (this.x < 25 || this.x > width - 25) this.vx *= -1;
+        if (this.y < 25 || this.y > height - 25) this.vy *= -1;
+
+        this.capacity += 0.22;
+        this.isSplitting = this.capacity > 85;
+      }
+
+      draw() {
+        const radius = Math.min(10, 3.5 + this.capacity * 0.065);
+        const color = clusterColors[this.cluster % clusterColors.length];
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        if (this.isSplitting) {
+          ctx.ellipse(0, 0, radius + 3, radius - 1, Math.PI / 4, 0, Math.PI * 2);
+        } else {
+          ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        }
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+    }
+
+    let nodes = Array.from({ length: 14 }, () => new AutonomousNode());
+    let mouse = { x: -1000, y: -1000 };
+    let totalSplitsCount = 0;
+
+    const handleMouseMove = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    };
+
+    const handleClick = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      let found = false;
+      nodes.forEach((n) => {
+        if (Math.hypot(n.x - clickX, n.y - clickY) < 32) {
+          n.capacity = 100;
+          found = true;
+        }
+      });
+
+      if (!found && nodes.length < 50) {
+        const randomCluster = Math.floor(Math.random() * clusterColors.length);
+        nodes.push(new AutonomousNode(clickX, clickY, randomCluster, 40));
+      }
+    };
+
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('click', handleClick);
+
+    const renderLab = () => {
+      ctx.fillStyle = '#030504';
+      ctx.fillRect(0, 0, width, height);
+
+      let totalEdges = 0;
+      let newNodes = [];
+
+      nodes.forEach((n, idx) => {
+        n.update();
+        n.draw();
+
+        if (n.capacity >= 100 && nodes.length + newNodes.length < 50) {
+          n.capacity = 25;
+          totalSplitsCount++;
+
+          const childCluster = Math.random() < 0.2 ? n.cluster + 1 : n.cluster;
+          const offsetAngle = Math.random() * Math.PI * 2;
+          const childX = n.x + Math.cos(offsetAngle) * 20;
+          const childY = n.y + Math.sin(offsetAngle) * 20;
+
+          newNodes.push(new AutonomousNode(childX, childY, childCluster, 25));
+        }
+
+        const distMouse = Math.hypot(n.x - mouse.x, n.y - mouse.y);
+        if (distMouse < 110) {
+          n.capacity += 0.35;
+          ctx.strokeStyle = clusterColors[n.cluster % clusterColors.length];
+          ctx.lineWidth = 0.9;
+          ctx.beginPath();
+          ctx.moveTo(n.x, n.y);
+          ctx.lineTo(mouse.x, mouse.y);
+          ctx.stroke();
+        }
+
+        for (let j = idx + 1; j < nodes.length; j++) {
+          const other = nodes[j];
+          const dist = Math.hypot(n.x - other.x, n.y - other.y);
+
+          if (dist < 92) {
+            totalEdges++;
+            const alpha = (1 - dist / 92) * 0.5;
+
+            ctx.strokeStyle = n.cluster === other.cluster 
+              ? clusterColors[n.cluster % clusterColors.length]
+              : `rgba(255, 255, 255, ${alpha * 0.4})`;
+
+            ctx.lineWidth = n.cluster === other.cluster ? 1.2 : 0.6;
+            ctx.beginPath();
+            ctx.moveTo(n.x, n.y);
+            ctx.lineTo(other.x, other.y);
+            ctx.stroke();
+          }
+        }
+      });
+
+      if (newNodes.length > 0) {
+        nodes = [...nodes, ...newNodes];
+      }
+
+      if (nodes.length > 50) {
+        nodes.shift();
+      }
+
+      setMetric({
+        nodes: nodes.length,
+        edges: totalEdges,
+        splits: totalSplitsCount,
+      });
+
+      animationFrameId = requestAnimationFrame(renderLab);
+    };
+
+    renderLab();
+
+    return () => {
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('click', handleClick);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
 
   return (
-    <div className="space-y-10 animate-fadeIn font-sans">
-      <div className="space-y-3 font-mono">
-        <p className="text-xs uppercase tracking-widest text-emerald-400 font-bold">
-          TECNOLOGIAS & FERRAMENTAS
-        </p>
-        <h1 className="text-3xl sm:text-5xl font-serif font-bold text-white leading-tight">
-          Stack Tecnológica
-        </h1>
-        <p className="text-sm text-zinc-400 max-w-xl font-sans">
-          Conjunto de linguagens, frameworks e ecossistemas utilizados em minhas pesquisas e softwares.
-        </p>
-      </div>
-
-      <hr className="border-zinc-800/80" />
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono">
-        {categorias.map((cat, idx) => (
-          <div key={idx} className="p-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl space-y-4">
-            <h2 className="text-xs text-emerald-400 font-bold uppercase tracking-wider">
-              {cat.nome}
-            </h2>
-            <ul className="space-y-2">
-              {cat.itens.map((tech, i) => (
-                <li key={i} className="text-sm text-zinc-300 flex items-center space-x-2">
-                  <span className="text-zinc-600">↳</span>
-                  <span>{tech}</span>
-                </li>
-              ))}
-            </ul>
+    <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeIn">
+      <div className="w-full max-w-2xl bg-zinc-950 border border-emerald-500/40 rounded-2xl p-6 shadow-[0_0_50px_rgba(16,185,129,0.25)] font-mono text-xs space-y-5">
+        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+          <div className="flex items-center space-x-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 cursor-pointer" onClick={onClose} />
+            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            <span className="text-emerald-400 font-bold pl-2 text-[11px] uppercase tracking-wider">
+              ZONNO ENGINE • AUTÔMATOS DE REDES RECONFIGURÁVEIS
+            </span>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Terminal() {
-  const [mensagem, setMensagem] = useState('');
-  const [enviado, setEnviado] = useState(false);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!mensagem.trim()) return;
-    setEnviado(true);
-    setTimeout(() => {
-      setMensagem('');
-      setEnviado(false);
-    }, 4000);
-  };
-
-  return (
-    <div className="space-y-8 animate-fadeIn font-mono">
-      <div className="space-y-3">
-        <p className="text-xs uppercase tracking-widest text-emerald-400 font-bold">
-          INTERACTIVE SHELL • CONEXÃO DIRETA
-        </p>
-        <h1 className="text-3xl sm:text-5xl font-sans font-light text-white uppercase tracking-tight">
-          Terminal
-        </h1>
-        <p className="text-sm text-zinc-400 max-w-xl font-sans">
-          Entre em contato direto para propostas, pesquisas em conjunto ou oportunidades.
-        </p>
-      </div>
-
-      <hr className="border-zinc-800/80" />
-
-      <div className="bg-black border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-6">
-        <div className="flex items-center space-x-2 border-b border-zinc-900 pb-4">
-          <div className="w-3 h-3 rounded-full bg-red-500/80" />
-          <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-          <div className="w-3 h-3 rounded-full bg-green-500/80" />
-          <span className="text-xs text-zinc-600 pl-2">zonno-shell v2.4 -- tty1</span>
-        </div>
-
-        <div className="space-y-2 text-xs text-zinc-400">
-          <p><span className="text-emerald-400">ryan@zonno:~$</span> status --info</p>
-          <p className="text-zinc-500">↳ Estudante de Ciência da Computação • Disponível para projetos</p>
-          <p><span className="text-emerald-400">ryan@zonno:~$</span> cat contact.txt</p>
-          <p className="text-zinc-300">↳ GitHub: github.com/ryanjuni</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4 border-t border-zinc-900">
-          <label className="block text-xs text-emerald-400">
-            <span>ryan@zonno:~$</span> send-message
-          </label>
-          <textarea
-            value={mensagem}
-            onChange={(e) => setMensagem(e.target.value)}
-            placeholder="Digite sua mensagem ou proposta aqui..."
-            rows={4}
-            className="w-full bg-zinc-900/80 border border-zinc-800 rounded-xl p-4 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500 font-mono transition-colors"
-          />
-
-          <button
-            type="submit"
-            className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-[2px_2px_0px_rgba(255,255,255,0.2)] cursor-pointer"
-          >
-            Executar envio ↵
+          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xs cursor-pointer">
+            [ESC fechar]
           </button>
+        </div>
 
-          {enviado && (
-            <p className="text-xs text-emerald-400 animate-pulse pt-2">
-              ✔ Mensagem enviada com sucesso para a fila de execução!
-            </p>
-          )}
-        </form>
+        <div className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative cursor-pointer">
+          <canvas ref={canvasRef} className="w-full block" />
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 text-center font-mono">
+          <div className="p-2.5 bg-zinc-900/50 rounded-xl border border-zinc-800">
+            <span className="text-[10px] text-zinc-500 block uppercase">Nós Ativos</span>
+            <span className="text-emerald-400 font-bold text-sm">{metric.nodes}</span>
+          </div>
+          <div className="p-2.5 bg-zinc-900/50 rounded-xl border border-zinc-800">
+            <span className="text-[10px] text-zinc-500 block uppercase">Conexões (Arestas)</span>
+            <span className="text-sky-400 font-bold text-sm">{metric.edges}</span>
+          </div>
+          <div className="p-2.5 bg-zinc-900/50 rounded-xl border border-zinc-800">
+            <span className="text-[10px] text-zinc-500 block uppercase">Bifurcações</span>
+            <span className="text-amber-400 font-bold text-sm">{metric.splits}</span>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
 // --- COMPONENTE PRINCIPAL APP ---
-
 export default function App() {
   const [githubVideoUrl, setGithubVideoUrl] = useState(null);
   const [projectTitle, setProjectTitle] = useState('Inventário');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  
   const [paginaAtual, setPaginaAtual] = useState('home');
+  const [isGraphOpen, setIsGraphOpen] = useState(false);
+  const [clickCount, setClickCount] = useState(0);
+
   const githubUsername = 'ryanjuni';
+
+  const handleLogoClick = () => {
+    setClickCount((prev) => {
+      if (prev + 1 >= 3) {
+        setIsGraphOpen(true);
+        return 0;
+      }
+      return prev + 1;
+    });
+
+    setTimeout(() => setClickCount(0), 1200);
+  };
 
   useEffect(() => {
     async function fetchGitHubVideo() {
@@ -686,15 +791,21 @@ export default function App() {
     >
       <CursorFireTrail />
       <FluidBackground />
+      <GraphTheoryModal isOpen={isGraphOpen} onClose={() => setIsGraphOpen(false)} />
 
       <div style={{ position: 'relative', zIndex: 10 }}>
         <header className="flex items-center justify-between px-4 sm:px-8 py-5 border-b border-zinc-800/80 max-w-7xl mx-auto relative">
-          <button 
-            onClick={() => setPaginaAtual('home')}
-            className="text-lg sm:text-xl font-black tracking-widest uppercase text-white font-mono hover:opacity-80 transition-opacity cursor-pointer"
-          >
-            ZONNO
-          </button>
+          <div className="flex items-center space-x-3">
+            <button 
+              onClick={() => {
+                setPaginaAtual('home');
+                handleLogoClick();
+              }}
+              className="text-lg sm:text-xl font-black tracking-widest uppercase text-white font-mono hover:opacity-80 transition-opacity cursor-pointer select-none"
+            >
+              ZONNO
+            </button>
+          </div>
 
           <div className="relative">
             <button
@@ -745,18 +856,6 @@ export default function App() {
                   ↳ Stack
                 </button>
 
-                <button
-                  onClick={() => {
-                    setPaginaAtual('terminal');
-                    setIsMenuOpen(false);
-                  }}
-                  className={`w-full text-left block px-4 py-2 hover:bg-zinc-800 transition-colors ${
-                    paginaAtual === 'terminal' ? 'text-emerald-400 font-bold' : 'text-zinc-300'
-                  }`}
-                >
-                  ↳ Terminal
-                </button>
-
                 <div className="border-t border-zinc-800 my-1" />
 
                 <a
@@ -775,10 +874,8 @@ export default function App() {
         <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
           {paginaAtual === 'sobre' && <Sobre />}
           {paginaAtual === 'acervo' && <Acervo />}
-          {paginaAtual === 'pesquisa' && <Pesquisa />}
           {paginaAtual === 'trajetoria' && <Trajetoria />}
           {paginaAtual === 'stack' && <Stack />}
-          {paginaAtual === 'terminal' && <Terminal />}
 
           {paginaAtual === 'home' && (
             <>
