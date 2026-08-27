@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// --- MINI-GAME: PAC-SLIME 3D GLOSSY (STUCK-FREE GHOST AI UPDATE) ---
+// --- MINI-GAME: PAC-SLIME 3D GLOSSY (MOBILE D-PAD REWORKED) ---
 function DinoGame() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -88,7 +88,7 @@ function DinoGame() {
       return MAZE_MAP[gy][gx] === 0;
     };
 
-    // PROJEÇÃO ISOMÉTRICA DINÂMICA SEGURANDO O SLIME NO CENTRO DA TELA
+    // PROJEÇÃO ISOMÉTRICA DINÂMICA
     const toIso = (worldX, worldY, heightOffset = 0) => {
       const relX = (worldX - slime.x) / TILE_SIZE;
       const relY = (worldY - slime.y) / TILE_SIZE;
@@ -174,7 +174,7 @@ function DinoGame() {
       ctx.fill();
     };
 
-    // SISTEMA DE IA DE NAVEGAÇÃO ANTITRAVAMENTO
+    // IA ANTITRAVAMENTO DOS FANTASMAS
     const updateGhostAI = (ghost, isTitan) => {
       const gx = Math.floor(ghost.x / TILE_SIZE);
       const gy = Math.floor(ghost.y / TILE_SIZE);
@@ -581,7 +581,7 @@ function DinoGame() {
             onClick={() => setGameState((prev) => (prev === 'PLAYING' ? 'PAUSED' : 'PLAYING'))}
             className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded border border-zinc-700"
           >
-            {gameState === 'PAUSED' ? 'RETOMAR [P]' : 'PAUSAR [P]'}
+            {gameState === 'PLAYING' ? 'RETOMAR [P]' : 'PAUSAR [P]'}
           </button>
           <span className="text-zinc-500">HI: {highScore}</span>
           <span className="text-zinc-200 font-bold">SCORE: {score}</span>
@@ -669,39 +669,38 @@ function DinoGame() {
           </div>
         )}
 
-        {/* CONTROLES VIRTUAIS HUD */}
+        {/* CONTROLES VIRTUAIS TIPO D-PAD ERGONÔMICO MODERNO PARA MOBILE */}
         {gameState === 'PLAYING' && (
-          <div className="absolute left-3 bottom-3 z-20 flex flex-col gap-1">
-            <div className="flex justify-center">
-              <button
-                onClick={() => window.triggerAction && window.triggerAction('UP')}
-                className="w-8 h-8 bg-zinc-800/90 text-white font-bold rounded flex items-center justify-center active:bg-zinc-700 border border-zinc-700"
-              >
-                ▲
-              </button>
-            </div>
-            <div className="flex gap-1">
+          <div className="absolute left-3 bottom-3 z-20 flex flex-col items-center select-none touch-none scale-90 sm:scale-100 origin-bottom-left">
+            {/* Cima */}
+            <button
+              onClick={() => window.triggerAction && window.triggerAction('UP')}
+              className="w-11 h-11 bg-zinc-900/90 active:bg-emerald-500 text-zinc-100 font-bold rounded-t-xl flex items-center justify-center border border-zinc-700/80 shadow-lg active:scale-95 transition-transform"
+            >
+              ▲
+            </button>
+            {/* Meio (Esquerda e Direita) */}
+            <div className="flex gap-7">
               <button
                 onClick={() => window.triggerAction && window.triggerAction('LEFT')}
-                className="w-8 h-8 bg-zinc-800/90 text-white font-bold rounded flex items-center justify-center active:bg-zinc-700 border border-zinc-700"
+                className="w-11 h-11 bg-zinc-900/90 active:bg-emerald-500 text-zinc-100 font-bold rounded-l-xl flex items-center justify-center border border-zinc-700/80 shadow-lg active:scale-95 transition-transform"
               >
                 ◀
               </button>
               <button
                 onClick={() => window.triggerAction && window.triggerAction('RIGHT')}
-                className="w-8 h-8 bg-zinc-800/90 text-white font-bold rounded flex items-center justify-center active:bg-zinc-700 border border-zinc-700"
+                className="w-11 h-11 bg-zinc-900/90 active:bg-emerald-500 text-zinc-100 font-bold rounded-r-xl flex items-center justify-center border border-zinc-700/80 shadow-lg active:scale-95 transition-transform"
               >
                 ▶
               </button>
             </div>
-            <div className="flex justify-center">
-              <button
-                onClick={() => window.triggerAction && window.triggerAction('DOWN')}
-                className="w-8 h-8 bg-zinc-800/90 text-white font-bold rounded flex items-center justify-center active:bg-zinc-700 border border-zinc-700"
-              >
-                ▼
-              </button>
-            </div>
+            {/* Baixo */}
+            <button
+              onClick={() => window.triggerAction && window.triggerAction('DOWN')}
+              className="w-11 h-11 bg-zinc-900/90 active:bg-emerald-500 text-zinc-100 font-bold rounded-b-xl flex items-center justify-center border border-zinc-700/80 shadow-lg active:scale-95 transition-transform"
+            >
+              ▼
+            </button>
           </div>
         )}
 
