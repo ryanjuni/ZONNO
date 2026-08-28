@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// --- MINI-GAME: PAC-SLIME 3D GRID-SNAP FLUID & SMART GHOST ABILITIES ---
+// --- MINI-GAME: PAC-SLIME 3D TAP-TO-MOVE WAYPOINT & ANTI-BUG ENGINE ---
 function DinoGame() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -14,12 +14,11 @@ function DinoGame() {
   const [caughtCount, setCaughtCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Estados de Poderes e Alertas de Habilidades dos Fantasmas
+  // Estados de Poderes e Alertas
   const [activePowers, setActivePowers] = useState([]);
   const [activeFruitText, setActiveFruitText] = useState('');
   const [ghostAlert, setGhostAlert] = useState('');
 
-  // Função para forçar tela cheia paisagem
   const handleStartGame = async () => {
     setScore(0);
     setLevel(1);
@@ -93,29 +92,62 @@ function DinoGame() {
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     ];
 
-    // --- MOVIMENTAÇÃO POR LINHAS/GRADE (ELIMINA TRAVAMENTOS NA BASE CENTRAL) ---
-    const slime = {
-      tileX: 1,
-      tileY: 1,
-      x: 1.5 * TILE_SIZE,
-      y: 1.5 * TILE_SIZE,
-      targetX: 1.5 * TILE_SIZE,
-      targetY: 1.5 * TILE_SIZE,
-      speed: 2.5 + level * 0.1,
-      nextDirX: 0,
-      nextDirY: 0,
-      dirX: 0,
-      dirY: 0,
-      powers: [],
-      invulnerableTimer: 0,
-    };
-
     const isWalkable = (gx, gy) => {
       if (gx < 0 || gx >= MAP_SIZE || gy < 0 || gy >= MAP_SIZE) return false;
       return MAZE_MAP[gy][gx] === 0;
     };
 
-    // --- FANTASMAS INTELIGENTES COM HABILIDADES ATIVAS E MUDANÇA DE COR ---
+    // --- SISTEMA DE WAYPOINTS (O SLIME SEGUE OS PONTOS CLICADOS NO CHÃO) ---
+    const slime = {
+      x: 1.5 * TILE_SIZE,
+      y: 1.5 * TILE_SIZE,
+      path: [], // Lista de coordenadas (gx, gy) até o destino
+      speed: 2.2 + level * 0.1,
+      powers: [],
+      invulnerableTimer: 0,
+    };
+
+    // Função para calcular caminho simples por BFS na grade do labirinto (Garante que nunca buga no centro)
+    const findPath = (startGx, startGy, targetGx, targetGy) => {
+      if (!isWalkable(targetGx, targetGy)) return [];
+      const queue = [[startGx, startGy]];
+      const visited = Array.from({ length: MAP_SIZE }, () => Array(MAP_SIZE).falsey || Array(MAP_SIZE).fill(false));
+      const parent = {};
+
+      visited[startGy][startGx] = true;
+      let found = false;
+
+      while (queue.length > 0) {
+        const [cx, cy] = queue.shift();
+        if (cx === targetGx && cy === targetGy) {
+          found = true;
+          break;
+        }
+
+        const dirs = [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }];
+        for (let d of dirs) {
+          const nx = cx + d.dx;
+          const ny = cy + d.dy;
+          if (isWalkable(nx, ny) && !visited[ny][nx]) {
+            visited[ny][nx] = true;
+            parent[`${nx},${ny}`] = [cx, cy];
+            queue.push([nx, ny]);
+          }
+        }
+      }
+
+      if (!found) return [];
+
+      let curr = [targetGx, targetGy];
+      const path = [curr];
+      while (parent[`${curr[0]},${curr[1]}`]) {
+        curr = parent[`${curr[0]},${curr[1]}`];
+        path.unshift(curr);
+      }
+      return path;
+    };
+
+    // --- FANTASMAS COM ANTIBUG TOTAL NA FASE 2+ ---
     const smartGhostAbilities = [
       { name: 'SUPER DASH', color: '#ff0055' },
       { name: 'TELEPORTE QUANTUM', color: '#00ffff' },
@@ -123,7 +155,7 @@ function DinoGame() {
       { name: 'BERSERK SPEED', color: '#ff9900' }
     ];
 
-    const baseSpeed = 1.1 + level * 0.08;
+    const baseSpeed = 1.0 + level * 0.08;
     const spawnPoints = [
       { x: 11.5 * TILE_SIZE, y: 1.5 * TILE_SIZE },
       { x: 11.5 * TILE_SIZE, y: 11.5 * TILE_SIZE },
@@ -143,14 +175,14 @@ function DinoGame() {
         dirX: 0,
         dirY: -1,
         speed: baseSpeed,
-        originalColor: spawnPoints[i] === 6.5 ? '#ff9100' : '#ff2a5f',
-        color: '#ff2a5f',
+        originalColor: i === 3 ? '#ff9100' : '#ff2a5f',
+        color: i === 3 ? '#ff9100' : '#ff2a5f',
         active: true,
         abilityName: assigned.name,
         abilityColor: assigned.color,
         abilityTimer: 0,
         isUsingAbility: false,
-        stuckCheckTimer: 0,
+        stuckFrames: 0,
         lastX: spawnPoints[i].x,
         lastY: spawnPoints[i].y,
       });
@@ -181,27 +213,31 @@ function DinoGame() {
       return { isoX, isoY };
     };
 
-    // SISTEMA DE CONTROLE POR CLIQUE / TOQUE NA GRADE (DIRECIONAL POR LINHAS)
-    window.triggerAction = (dir) => {
-      if (dir === 'UP') { slime.nextDirX = 0; slime.nextDirY = -1; }
-      if (dir === 'DOWN') { slime.nextDirX = 0; slime.nextDirY = 1; }
-      if (dir === 'LEFT') { slime.nextDirX = -1; slime.nextDirY = 0; }
-      if (dir === 'RIGHT') { slime.nextDirX = 1; slime.nextDirY = 0; }
+    // Evento de clique/toque no canvas para definir para onde o Slime deve ir
+    const handleCanvasClick = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      // Converte coordenadas da tela isométrica de volta para a matriz do labirinto
+      for (let r = 0; r < MAP_SIZE; r++) {
+        for (let c = 0; c < MAP_SIZE; c++) {
+          if (MAZE_MAP[r][c] === 0) {
+            const { isoX, isoY } = toIso((c + 0.5) * TILE_SIZE, (r + 0.5) * TILE_SIZE);
+            if (Math.hypot(clickX - isoX, clickY - isoY) < TILE_SIZE * 0.8) {
+              const startGx = Math.floor(slime.x / TILE_SIZE);
+              const startGy = Math.floor(slime.y / TILE_SIZE);
+              const newPath = findPath(startGx, startGy, c, r);
+              if (newPath.length > 0) {
+                slime.path = newPath.map(([gx, gy]) => ({ x: (gx + 0.5) * TILE_SIZE, y: (gy + 0.5) * TILE_SIZE }));
+              }
+            }
+          }
+        }
+      }
     };
 
-    const handleKeyDown = (e) => {
-      const keysToBlock = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'W', 's', 'S', 'a', 'A', 'd', 'D'];
-      if (keysToBlock.includes(e.key)) e.preventDefault();
-
-      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') window.triggerAction('UP');
-      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') window.triggerAction('DOWN');
-      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') window.triggerAction('LEFT');
-      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') window.triggerAction('RIGHT');
-
-      if (e.key === 'p' || e.key === 'P') setGameState('PAUSED');
-    };
-
-    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    canvas.addEventListener('click', handleCanvasClick);
 
     const createParticles = (worldX, worldY, color = '#ffea00', count = 10) => {
       const { isoX, isoY } = toIso(worldX, worldY);
@@ -254,13 +290,12 @@ function DinoGame() {
       ctx.fill();
     };
 
-    // IA INTELIGENTE DOS FANTASMAS COM ANTIBUG E USO DE PODERES
+    // --- IA DE FANTASMAS COM ANTIBUG RIGOROSO (GARANTE QUE O ÚLTIMO NUNCA BUGA) ---
     const updateGhostAI = (ghost, isTitan) => {
       if (!ghost.active) return;
       ghost.abilityTimer++;
 
-      // Ativação inteligente e autônoma de poderes dos fantasmas com mudança de cor e alerta na tela
-      if (ghost.abilityTimer % 220 === 0) {
+      if (ghost.abilityTimer % 200 === 0) {
         ghost.isUsingAbility = true;
         ghost.color = ghost.abilityColor;
         setGhostAlert(`👻 ${ghost.id} usou ${ghost.abilityName}!`);
@@ -268,24 +303,22 @@ function DinoGame() {
           ghost.isUsingAbility = false;
           ghost.color = ghost.originalColor;
           setGhostAlert('');
-        }, 3000);
+        }, 2800);
       }
 
       let curSpeed = isTitan ? ghost.speed * 0.4 : ghost.speed;
       if (ghost.isUsingAbility && ghost.abilityName === 'SUPER DASH') curSpeed *= 2.2;
-      if (ghost.isUsingAbility && ghost.abilityName === 'TELEPORTE QUANTUM' && ghost.abilityTimer % 60 === 0) {
+      if (ghost.isUsingAbility && ghost.abilityName === 'TELEPORTE QUANTUM' && ghost.abilityTimer % 80 === 0) {
         ghost.x = (Math.floor(Math.random() * 10) + 1.5) * TILE_SIZE;
         ghost.y = (Math.floor(Math.random() * 10) + 1.5) * TILE_SIZE;
       }
 
       const nextX = ghost.x + ghost.dirX * curSpeed;
       const nextY = ghost.y + ghost.dirY * curSpeed;
-
       const gx = Math.floor(nextX / TILE_SIZE);
       const gy = Math.floor(nextY / TILE_SIZE);
 
-      // Sistema Antibug anti-travamento em paredes ou cantos centrais
-      if (gx < 0 || gx >= MAP_SIZE || gy < 0 || gy >= MAP_SIZE || MAZE_MAP[gy][gx] === 1) {
+      if (!isWalkable(gx, gy)) {
         const dirs = [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }];
         const currentGx = Math.floor(ghost.x / TILE_SIZE);
         const currentGy = Math.floor(ghost.y / TILE_SIZE);
@@ -303,16 +336,18 @@ function DinoGame() {
         ghost.y = nextY;
       }
 
-      // Previne travamento estático perpétuo
-      if (Math.hypot(ghost.x - ghost.lastX, ghost.y - ghost.lastY) < 0.2) {
-        ghost.stuckCheckTimer++;
-        if (ghost.stuckCheckTimer > 40) {
+      // Sistema antibug preventivo infalível para o último fantasma
+      if (Math.hypot(ghost.x - ghost.lastX, ghost.y - ghost.lastY) < 0.1) {
+        ghost.stuckFrames++;
+        if (ghost.stuckFrames > 30) {
           ghost.x = 6.5 * TILE_SIZE;
           ghost.y = 6.5 * TILE_SIZE;
-          ghost.stuckCheckTimer = 0;
+          ghost.dirX = 1;
+          ghost.dirY = 0;
+          ghost.stuckFrames = 0;
         }
       } else {
-        ghost.stuckCheckTimer = 0;
+        ghost.stuckFrames = 0;
       }
       ghost.lastX = ghost.x;
       ghost.lastY = ghost.y;
@@ -325,41 +360,27 @@ function DinoGame() {
       frame++;
       if (slime.invulnerableTimer > 0) slime.invulnerableTimer--;
 
-      // --- MOVIMENTAÇÃO POR GRADE/LINHA SUAVE (ELIMINA BUG DA BASE CENTRAL) ---
+      // --- MOVIMENTAÇÃO POR WAYPOINTS (O SLIME SEGUE OS PONTOS CLICADOS) ---
       const activeSpeed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.5 : slime.speed;
 
-      const currentCellX = slime.x / TILE_SIZE;
-      const currentCellY = slime.y / TILE_SIZE;
+      if (slime.path.length > 0) {
+        const target = slime.path[0];
+        const angle = Math.atan2(target.y - slime.y, target.x - slime.x);
+        const moveX = Math.cos(angle) * activeSpeed;
+        const moveY = Math.sin(angle) * activeSpeed;
 
-      // Se estiver próximo ao centro da célula atual, permite trocar para a próxima direção desejada
-      const atTileCenter = Math.abs(slime.x - (Math.floor(currentCellX) + 0.5) * TILE_SIZE) < activeSpeed &&
-                           Math.abs(slime.y - (Math.floor(currentCellY) + 0.5) * TILE_SIZE) < activeSpeed;
+        slime.x += moveX;
+        slime.y += moveY;
 
-      if (atTileCenter && (slime.nextDirX !== 0 || slime.nextDirY !== 0)) {
-        const targetGx = Math.floor(currentCellX) + slime.nextDirX;
-        const targetGy = Math.floor(currentCellY) + slime.nextDirY;
-        if (isWalkable(targetGx, targetGy)) {
-          slime.dirX = slime.nextDirX;
-          slime.dirY = slime.nextDirY;
+        if (Math.hypot(slime.x - target.x, slime.y - target.y) <= activeSpeed) {
+          slime.x = target.x;
+          slime.y = target.y;
+          slime.path.shift(); // Remove waypoint alcançado e vai pro próximo
         }
       }
 
-      // Testa se a direção atual é caminhável antes de mover
-      const nextX = slime.x + slime.dirX * activeSpeed;
-      const nextY = slime.y + slime.dirY * activeSpeed;
-      const nextGx = Math.floor(nextX / TILE_SIZE);
-      const nextGy = Math.floor(nextY / TILE_SIZE);
-
-      if (isWalkable(nextGx, nextGy)) {
-        slime.x = nextX;
-        slime.y = nextY;
-      } else {
-        slime.dirX = 0;
-        slime.dirY = 0;
-      }
-
-      // Spawn de frutas
-      if (frame % 140 === 0) {
+      // Spawn de Frutas
+      if (frame % 130 === 0) {
         const freeCells = [];
         for (let r = 0; r < MAP_SIZE; r++) {
           for (let c = 0; c < MAP_SIZE; c++) {
@@ -379,7 +400,7 @@ function DinoGame() {
         }
       }
 
-      // Renderização do Chão
+      // Renderização do Chão e dos Pontinhos de Waypoint no Chão
       for (let r = 0; r < MAP_SIZE; r++) {
         for (let c = 0; c < MAP_SIZE; c++) {
           const { isoX, isoY } = toIso((c + 0.5) * TILE_SIZE, (r + 0.5) * TILE_SIZE);
@@ -395,7 +416,31 @@ function DinoGame() {
           ctx.strokeStyle = 'rgba(52, 211, 153, 0.2)';
           ctx.lineWidth = 0.6;
           ctx.stroke();
+
+          // Desenha indicador visual discreto nos pisos caminháveis para guiar o clique
+          if (MAZE_MAP[r][c] === 0) {
+            ctx.fillStyle = 'rgba(52, 211, 153, 0.15)';
+            ctx.beginPath();
+            ctx.arc(isoX, isoY + 6, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
+      }
+
+      // Desenha a linha de rota ativa (Waypoints no chão para guiar o jogador)
+      if (slime.path.length > 0) {
+        ctx.strokeStyle = '#34d399';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        const startIso = toIso(slime.x, slime.y);
+        ctx.moveTo(startIso.isoX, startIso.isoY);
+        slime.path.forEach(pt => {
+          const pIso = toIso(pt.x, pt.y);
+          ctx.lineTo(pIso.isoX, pIso.isoY);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
 
       // Pac-Dots & Ímã
@@ -429,7 +474,7 @@ function DinoGame() {
         return;
       }
 
-      // Frutas de Poder
+      // Frutas
       for (let i = powerFruits.length - 1; i >= 0; i--) {
         const f = powerFruits[i];
         const { isoX, isoY } = toIso(f.x, f.y, 6 + Math.sin(frame * 0.1) * 3);
@@ -545,12 +590,11 @@ function DinoGame() {
         } else if (item.type === 'GHOST') {
           const ghost = item.ghost;
           const { isoX: gX, isoY: gY } = toIso(ghost.x, ghost.y, 12 + Math.sin(frame * 0.15) * 3);
-          const gColor = isTitan ? '#bd00ff' : ghost.color;
 
           ctx.save();
-          ctx.shadowColor = gColor;
-          ctx.shadowBlur = 16;
-          ctx.fillStyle = gColor;
+          ctx.shadowColor = ghost.color;
+          ctx.shadowBlur = ghost.isUsingAbility ? 25 : 14;
+          ctx.fillStyle = ghost.color;
 
           ctx.beginPath();
           ctx.arc(gX, gY - 4, 10, Math.PI, 0, false);
@@ -596,40 +640,11 @@ function DinoGame() {
     window.addEventListener('resize', handleResize);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('resize', handleResize);
-      delete window.triggerAction;
+      if (canvas) canvas.removeEventListener('click', handleCanvasClick);
       cancelAnimationFrame(animationFrameId);
     };
   }, [gameState, level]);
-
-  // Controles de toque fluídos por arrastar ou deslizar na tela
-  const handleTouchStart = (e) => {
-    if (gameState !== 'PLAYING') return;
-    const touch = e.touches[0];
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
-    setIsDragging(true);
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isDragging || gameState !== 'PLAYING') return;
-    const touch = e.touches[0];
-    const dX = touch.clientX - touchStartRef.current.x;
-    const dY = touch.clientY - touchStartRef.current.y;
-
-    if (Math.abs(dX) > 10 || Math.abs(dY) > 10) {
-      if (Math.abs(dX) > Math.abs(dY)) {
-        if (dX > 0) window.triggerAction && window.triggerAction('RIGHT');
-        else window.triggerAction && window.triggerAction('LEFT');
-      } else {
-        if (dY > 0) window.triggerAction && window.triggerAction('DOWN');
-        else window.triggerAction && window.triggerAction('UP');
-      }
-      touchStartRef.current = { x: touch.clientX, y: touch.clientY };
-    }
-  };
-
-  const handleTouchEnd = () => setIsDragging(false);
 
   return (
     <div 
@@ -678,13 +693,8 @@ function DinoGame() {
         </div>
       </div>
 
-      {/* ÁREA DE JOGO LANDSCAPE FULLSCREEN */}
-      <div 
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative flex-1 min-h-[320px] sm:min-h-[400px] flex items-center justify-center select-none touch-none"
-      >
+      {/* ÁREA DE JOGO LANDSCAPE FULLSCREEN COM CLIQUE WAYPOINT */}
+      <div className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative flex-1 min-h-[320px] sm:min-h-[400px] flex items-center justify-center select-none touch-none">
         {ghostAlert && (
           <div className="absolute top-3 bg-red-600 text-white px-4 py-1.5 font-bold rounded-xl z-40 text-xs animate-bounce shadow-2xl border border-red-400">
             {ghostAlert}
@@ -700,9 +710,9 @@ function DinoGame() {
         {/* TELA DE INÍCIO */}
         {gameState === 'IDLE' && (
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME 3D GRID-SNAP</h2>
+            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME 3D WAYPOINT</h2>
             <p className="text-zinc-300 font-sans text-xs sm:text-sm max-w-md leading-relaxed">
-              Movimentação por linhas fluida (sem travamentos na base central), fantasmas inteligentes que mudam de cor e usam poderes dinâmicos!
+              **Toque em qualquer lugar do chão do labirinto** para o Slime caminhar automaticamente por rotas seguras! Zero travamentos no centro.
             </p>
             <button
               onClick={handleStartGame}
@@ -717,7 +727,7 @@ function DinoGame() {
         {gameState === 'LEVEL_WIN' && (
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
             <p className="text-emerald-400 font-bold text-lg tracking-widest uppercase">FASE {level - 1} VENCIDA!</p>
-            <p className="text-zinc-300 font-mono">Iniciando Fase {level} com novos desafios na horizontal...</p>
+            <p className="text-zinc-300 font-mono">Iniciando Fase {level} com novas habilidades da polícia...</p>
             <button
               onClick={() => setGameState('PLAYING')}
               className="px-8 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_25px_rgba(52,211,153,0.5)] cursor-pointer text-sm"
@@ -762,7 +772,7 @@ function DinoGame() {
           </div>
         )}
 
-        <canvas ref={canvasRef} className="w-full h-full block touch-none" />
+        <canvas ref={canvasRef} className="w-full h-full block touch-none cursor-pointer" />
       </div>
     </div>
   );
