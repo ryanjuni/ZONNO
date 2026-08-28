@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// --- MINI-GAME: PAC-SLIME 3D ULTRA FLUID ENGINE V3 ---
+// --- MINI-GAME: PAC-SLIME 3D GRID-SNAP FLUID & SMART GHOST ABILITIES ---
 function DinoGame() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -14,16 +14,12 @@ function DinoGame() {
   const [caughtCount, setCaughtCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Estados de Poderes Combinados Ativos
+  // Estados de Poderes e Alertas de Habilidades dos Fantasmas
   const [activePowers, setActivePowers] = useState([]);
   const [activeFruitText, setActiveFruitText] = useState('');
+  const [ghostAlert, setGhostAlert] = useState('');
 
-  // Controles de Toque / Joystick Flutuante
-  const touchStartRef = useRef({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [joyPos, setJoyPos] = useState({ x: 0, y: 0 });
-
-  // Função robusta para forçar tela cheia horizontal instantânea no mobile
+  // Função para forçar tela cheia paisagem
   const handleStartGame = async () => {
     setScore(0);
     setLevel(1);
@@ -36,25 +32,19 @@ function DinoGame() {
     const elem = containerRef.current;
     if (elem) {
       try {
-        if (elem.requestFullscreen) {
-          await elem.requestFullscreen();
-        } else if (elem.webkitRequestFullscreen) {
-          await elem.webkitRequestFullscreen(); // Safari iOS / WebKit fix
-        } else if (elem.msRequestFullscreen) {
-          await elem.msRequestFullscreen();
-        }
+        if (elem.requestFullscreen) await elem.requestFullscreen();
+        else if (elem.webkitRequestFullscreen) await elem.webkitRequestFullscreen();
         setIsFullscreen(true);
       } catch (err) {
-        console.log('Fullscreen automático ajustado pelo navegador:', err);
+        console.log('Fullscreen ativado:', err);
       }
     }
 
-    // Trava em modo paisagem se suportado
     if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
       try {
         await window.screen.orientation.lock('landscape');
       } catch (err) {
-        console.log('Bloqueio de orientação paisagem manual necessário:', err);
+        console.log('Landscape lock:', err);
       }
     }
   };
@@ -103,51 +93,66 @@ function DinoGame() {
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     ];
 
-    // --- MOVIMENTAÇÃO 100% FLUIDA (VELOCIDADE CONTÍNUA EM VETORES) ---
+    // --- MOVIMENTAÇÃO POR LINHAS/GRADE (ELIMINA TRAVAMENTOS NA BASE CENTRAL) ---
     const slime = {
+      tileX: 1,
+      tileY: 1,
       x: 1.5 * TILE_SIZE,
       y: 1.5 * TILE_SIZE,
-      vx: 0,
-      vy: 0,
-      nextVx: 1.8,
-      nextVy: 0,
-      speed: 2.2 + level * 0.05,
+      targetX: 1.5 * TILE_SIZE,
+      targetY: 1.5 * TILE_SIZE,
+      speed: 2.5 + level * 0.1,
+      nextDirX: 0,
+      nextDirY: 0,
+      dirX: 0,
+      dirY: 0,
       powers: [],
       invulnerableTimer: 0,
     };
 
-    const ghostAbilityPool = [
-      'GHOST_DASH', 'TELEPORT', 'INVISIBILIDADE', 'FREEZE_SLIME', 'SHOCKWAVE', 
-      'SPEED_BOOST', 'GHOST_SHIELD', 'WALL_PHASE', 'TIME_SLOW', 'CURSE_DRAIN', 
-      'POISON_CLOUD', 'MAGNETIC_PULL', 'METEOR_DROP', 'BLACK_HOLE', 'LASER_BEAM'
+    const isWalkable = (gx, gy) => {
+      if (gx < 0 || gx >= MAP_SIZE || gy < 0 || gy >= MAP_SIZE) return false;
+      return MAZE_MAP[gy][gx] === 0;
+    };
+
+    // --- FANTASMAS INTELIGENTES COM HABILIDADES ATIVAS E MUDANÇA DE COR ---
+    const smartGhostAbilities = [
+      { name: 'SUPER DASH', color: '#ff0055' },
+      { name: 'TELEPORTE QUANTUM', color: '#00ffff' },
+      { name: 'INVISIBILIDADE', color: '#888888' },
+      { name: 'BERSERK SPEED', color: '#ff9900' }
     ];
 
-    const baseSpeed = 1.0 + level * 0.08;
-    const ghostColors = ['#ff2a5f', '#ff77bc', '#00e5ff', '#ff9100', '#a855f7', '#3b82f6'];
+    const baseSpeed = 1.1 + level * 0.08;
     const spawnPoints = [
       { x: 11.5 * TILE_SIZE, y: 1.5 * TILE_SIZE },
       { x: 11.5 * TILE_SIZE, y: 11.5 * TILE_SIZE },
       { x: 1.5 * TILE_SIZE, y: 11.5 * TILE_SIZE },
       { x: 6.5 * TILE_SIZE, y: 6.5 * TILE_SIZE },
-      { x: 1.5 * TILE_SIZE, y: 6.5 * TILE_SIZE },
-      { x: 11.5 * TILE_SIZE, y: 6.5 * TILE_SIZE },
     ];
 
     let ghosts = [];
     const totalGhostsInLevel = Math.min(3 + level, spawnPoints.length);
 
     for (let i = 0; i < totalGhostsInLevel; i++) {
+      const assigned = smartGhostAbilities[i % smartGhostAbilities.length];
       ghosts.push({
-        id: `GHOST_${i}`,
+        id: `GHOST_${i + 1}`,
         x: spawnPoints[i].x,
         y: spawnPoints[i].y,
-        dirX: i % 2 === 0 ? 1 : -1,
-        dirY: i % 2 !== 0 ? 1 : -1,
-        speed: baseSpeed * (0.9 + i * 0.05),
-        color: ghostColors[i % ghostColors.length],
+        dirX: 0,
+        dirY: -1,
+        speed: baseSpeed,
+        originalColor: spawnPoints[i] === 6.5 ? '#ff9100' : '#ff2a5f',
+        color: '#ff2a5f',
         active: true,
-        ability: ghostAbilityPool[(i + level) % ghostAbilityPool.length],
+        abilityName: assigned.name,
+        abilityColor: assigned.color,
         abilityTimer: 0,
+        isUsingAbility: false,
+        stuckCheckTimer: 0,
+        lastX: spawnPoints[i].x,
+        lastY: spawnPoints[i].y,
       });
     }
 
@@ -167,24 +172,6 @@ function DinoGame() {
       }
     }
 
-    // Colisão ultra suave com raio preciso (evita qualquer travamento nas paredes)
-    const checkWallCollision = (x, y, radius = 7) => {
-      const corners = [
-        { x: x - radius, y: y - radius },
-        { x: x + radius, y: y - radius },
-        { x: x - radius, y: y + radius },
-        { x: x + radius, y: y + radius },
-      ];
-      for (let corner of corners) {
-        const gx = Math.floor(corner.x / TILE_SIZE);
-        const gy = Math.floor(corner.y / TILE_SIZE);
-        if (gx < 0 || gx >= MAP_SIZE || gy < 0 || gy >= MAP_SIZE || MAZE_MAP[gy][gx] === 1) {
-          return true;
-        }
-      }
-      return false;
-    };
-
     const toIso = (worldX, worldY, heightOffset = 0) => {
       const relX = (worldX - slime.x) / TILE_SIZE;
       const relY = (worldY - slime.y) / TILE_SIZE;
@@ -194,29 +181,27 @@ function DinoGame() {
       return { isoX, isoY };
     };
 
+    // SISTEMA DE CONTROLE POR CLIQUE / TOQUE NA GRADE (DIRECIONAL POR LINHAS)
+    window.triggerAction = (dir) => {
+      if (dir === 'UP') { slime.nextDirX = 0; slime.nextDirY = -1; }
+      if (dir === 'DOWN') { slime.nextDirX = 0; slime.nextDirY = 1; }
+      if (dir === 'LEFT') { slime.nextDirX = -1; slime.nextDirY = 0; }
+      if (dir === 'RIGHT') { slime.nextDirX = 1; slime.nextDirY = 0; }
+    };
+
     const handleKeyDown = (e) => {
       const keysToBlock = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'W', 's', 'S', 'a', 'A', 'd', 'D'];
       if (keysToBlock.includes(e.key)) e.preventDefault();
 
-      const speed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.5 : slime.speed;
-
-      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { slime.nextVx = 0; slime.nextVy = -speed; }
-      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { slime.nextVx = 0; slime.nextVy = speed; }
-      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') { slime.nextVx = -speed; slime.nextVy = 0; }
-      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') { slime.nextVx = speed; slime.nextVy = 0; }
+      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') window.triggerAction('UP');
+      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') window.triggerAction('DOWN');
+      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') window.triggerAction('LEFT');
+      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') window.triggerAction('RIGHT');
 
       if (e.key === 'p' || e.key === 'P') setGameState('PAUSED');
     };
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
-
-    window.triggerAction = (dir) => {
-      const speed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.5 : slime.speed;
-      if (dir === 'UP') { slime.nextVx = 0; slime.nextVy = -speed; }
-      if (dir === 'DOWN') { slime.nextVx = 0; slime.nextVy = speed; }
-      if (dir === 'LEFT') { slime.nextVx = -speed; slime.nextVy = 0; }
-      if (dir === 'RIGHT') { slime.nextVx = speed; slime.nextVy = 0; }
-    };
 
     const createParticles = (worldX, worldY, color = '#ffea00', count = 10) => {
       const { isoX, isoY } = toIso(worldX, worldY);
@@ -269,28 +254,44 @@ function DinoGame() {
       ctx.fill();
     };
 
+    // IA INTELIGENTE DOS FANTASMAS COM ANTIBUG E USO DE PODERES
     const updateGhostAI = (ghost, isTitan) => {
       if (!ghost.active) return;
       ghost.abilityTimer++;
-      let curSpeed = isTitan ? ghost.speed * 0.4 : ghost.speed;
 
-      if (ghost.ability === 'GHOST_DASH' && ghost.abilityTimer % 90 === 0) curSpeed *= 2.2;
-      if (ghost.ability === 'TELEPORT' && ghost.abilityTimer % 280 === 0) {
+      // Ativação inteligente e autônoma de poderes dos fantasmas com mudança de cor e alerta na tela
+      if (ghost.abilityTimer % 220 === 0) {
+        ghost.isUsingAbility = true;
+        ghost.color = ghost.abilityColor;
+        setGhostAlert(`👻 ${ghost.id} usou ${ghost.abilityName}!`);
+        setTimeout(() => {
+          ghost.isUsingAbility = false;
+          ghost.color = ghost.originalColor;
+          setGhostAlert('');
+        }, 3000);
+      }
+
+      let curSpeed = isTitan ? ghost.speed * 0.4 : ghost.speed;
+      if (ghost.isUsingAbility && ghost.abilityName === 'SUPER DASH') curSpeed *= 2.2;
+      if (ghost.isUsingAbility && ghost.abilityName === 'TELEPORTE QUANTUM' && ghost.abilityTimer % 60 === 0) {
         ghost.x = (Math.floor(Math.random() * 10) + 1.5) * TILE_SIZE;
         ghost.y = (Math.floor(Math.random() * 10) + 1.5) * TILE_SIZE;
-        createParticles(ghost.x, ghost.y, '#00e5ff', 14);
       }
 
       const nextX = ghost.x + ghost.dirX * curSpeed;
       const nextY = ghost.y + ghost.dirY * curSpeed;
 
-      if (checkWallCollision(nextX, nextY, 6)) {
-        const directions = [
-          { dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }
-        ];
-        const validMoves = directions.filter(d => !checkWallCollision(ghost.x + d.dx * TILE_SIZE * 0.5, ghost.y + d.dy * TILE_SIZE * 0.5, 6));
-        if (validMoves.length > 0) {
-          const chosen = validMoves[Math.floor(Math.random() * validMoves.length)];
+      const gx = Math.floor(nextX / TILE_SIZE);
+      const gy = Math.floor(nextY / TILE_SIZE);
+
+      // Sistema Antibug anti-travamento em paredes ou cantos centrais
+      if (gx < 0 || gx >= MAP_SIZE || gy < 0 || gy >= MAP_SIZE || MAZE_MAP[gy][gx] === 1) {
+        const dirs = [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }];
+        const currentGx = Math.floor(ghost.x / TILE_SIZE);
+        const currentGy = Math.floor(ghost.y / TILE_SIZE);
+        const valid = dirs.filter(d => isWalkable(currentGx + d.dx, currentGy + d.dy));
+        if (valid.length > 0) {
+          const chosen = valid[Math.floor(Math.random() * valid.length)];
           ghost.dirX = chosen.dx;
           ghost.dirY = chosen.dy;
         } else {
@@ -301,6 +302,20 @@ function DinoGame() {
         ghost.x = nextX;
         ghost.y = nextY;
       }
+
+      // Previne travamento estático perpétuo
+      if (Math.hypot(ghost.x - ghost.lastX, ghost.y - ghost.lastY) < 0.2) {
+        ghost.stuckCheckTimer++;
+        if (ghost.stuckCheckTimer > 40) {
+          ghost.x = 6.5 * TILE_SIZE;
+          ghost.y = 6.5 * TILE_SIZE;
+          ghost.stuckCheckTimer = 0;
+        }
+      } else {
+        ghost.stuckCheckTimer = 0;
+      }
+      ghost.lastX = ghost.x;
+      ghost.lastY = ghost.y;
     };
 
     const gameLoop = () => {
@@ -310,36 +325,41 @@ function DinoGame() {
       frame++;
       if (slime.invulnerableTimer > 0) slime.invulnerableTimer--;
 
-      // --- ENGINE DE MOVIMENTAÇÃO FLUIDA SEM TRAVAMENTOS ---
+      // --- MOVIMENTAÇÃO POR GRADE/LINHA SUAVE (ELIMINA BUG DA BASE CENTRAL) ---
       const activeSpeed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.5 : slime.speed;
 
-      // Tenta mudar de direção suavemente se o caminho estiver livre
-      if (slime.nextVx !== 0 || slime.nextVy !== 0) {
-        const testX = slime.x + Math.sign(slime.nextVx) * activeSpeed;
-        const testY = slime.y + Math.sign(slime.nextVy) * activeSpeed;
-        if (!checkWallCollision(testX, testY, 7)) {
-          slime.vx = Math.sign(slime.nextVx) * activeSpeed;
-          slime.vy = Math.sign(slime.nextVy) * activeSpeed;
+      const currentCellX = slime.x / TILE_SIZE;
+      const currentCellY = slime.y / TILE_SIZE;
+
+      // Se estiver próximo ao centro da célula atual, permite trocar para a próxima direção desejada
+      const atTileCenter = Math.abs(slime.x - (Math.floor(currentCellX) + 0.5) * TILE_SIZE) < activeSpeed &&
+                           Math.abs(slime.y - (Math.floor(currentCellY) + 0.5) * TILE_SIZE) < activeSpeed;
+
+      if (atTileCenter && (slime.nextDirX !== 0 || slime.nextDirY !== 0)) {
+        const targetGx = Math.floor(currentCellX) + slime.nextDirX;
+        const targetGy = Math.floor(currentCellY) + slime.nextDirY;
+        if (isWalkable(targetGx, targetGy)) {
+          slime.dirX = slime.nextDirX;
+          slime.dirY = slime.nextDirY;
         }
       }
 
-      // Move nos eixos X e Y de forma independente para raspar nas paredes perfeitamente (sem travar)
-      const moveX = slime.x + slime.vx;
-      if (!checkWallCollision(moveX, slime.y, 7)) {
-        slime.x = moveX;
+      // Testa se a direção atual é caminhável antes de mover
+      const nextX = slime.x + slime.dirX * activeSpeed;
+      const nextY = slime.y + slime.dirY * activeSpeed;
+      const nextGx = Math.floor(nextX / TILE_SIZE);
+      const nextGy = Math.floor(nextY / TILE_SIZE);
+
+      if (isWalkable(nextGx, nextGy)) {
+        slime.x = nextX;
+        slime.y = nextY;
       } else {
-        slime.vx = 0;
+        slime.dirX = 0;
+        slime.dirY = 0;
       }
 
-      const moveY = slime.y + slime.vy;
-      if (!checkWallCollision(slime.x, moveY, 7)) {
-        slime.y = moveY;
-      } else {
-        slime.vy = 0;
-      }
-
-      // Spawn automático de frutas com 50 poderes combináveis
-      if (frame % 130 === 0) {
+      // Spawn de frutas
+      if (frame % 140 === 0) {
         const freeCells = [];
         for (let r = 0; r < MAP_SIZE; r++) {
           for (let c = 0; c < MAP_SIZE; c++) {
@@ -348,16 +368,13 @@ function DinoGame() {
         }
         if (freeCells.length > 0) {
           const randCell = freeCells[Math.floor(Math.random() * freeCells.length)];
-          const fruitPool = [
-            'TURBO_SPEED', 'MEGA_TITAN', 'SHIELD_GLOSS', 'HEART_BOOST', 'MAGNET_STARS',
-            'GHOST_FREEZE', 'SCORE_MULTIPLIER', 'GHOST_EATER', 'LASER_AURA', 'INVISIBILITY'
-          ];
-          const chosenPower = fruitPool[Math.floor(Math.random() * fruitPool.length)];
+          const fruitPool = ['TURBO_SPEED', 'MEGA_TITAN', 'SHIELD_GLOSS', 'HEART_BOOST', 'MAGNET_STARS'];
+          const chosen = fruitPool[Math.floor(Math.random() * fruitPool.length)];
           powerFruits.push({
             x: randCell.x,
             y: randCell.y,
-            powerType: chosenPower,
-            color: chosenPower === 'MEGA_TITAN' ? '#a855f7' : chosenPower === 'HEART_BOOST' ? '#ef4444' : '#34d399',
+            powerType: chosen,
+            color: chosen === 'MEGA_TITAN' ? '#a855f7' : chosen === 'HEART_BOOST' ? '#ef4444' : '#34d399',
           });
         }
       }
@@ -381,10 +398,10 @@ function DinoGame() {
         }
       }
 
-      // Pac-Dots & Imã Automático
+      // Pac-Dots & Ímã
       for (let i = pacDots.length - 1; i >= 0; i--) {
         const dot = pacDots[i];
-        if (slime.powers.includes('MAGNET_STARS') && Math.hypot(slime.x - dot.x, slime.y - dot.y) < 75) {
+        if (slime.powers.includes('MAGNET_STARS') && Math.hypot(slime.x - dot.x, slime.y - dot.y) < 70) {
           dot.x += (slime.x - dot.x) * 0.3;
           dot.y += (slime.y - dot.y) * 0.3;
         }
@@ -397,8 +414,7 @@ function DinoGame() {
 
         if (Math.hypot(slime.x - dot.x, slime.y - dot.y) < 16) {
           pacDots.splice(i, 1);
-          const mult = slime.powers.includes('SCORE_MULTIPLIER') ? 3 : 1;
-          currentScore += 10 * mult;
+          currentScore += 10;
           setScore(currentScore);
           createParticles(dot.x, dot.y, '#facc15', 4);
         }
@@ -413,7 +429,7 @@ function DinoGame() {
         return;
       }
 
-      // Coleta de Frutas e Combinação Automática
+      // Frutas de Poder
       for (let i = powerFruits.length - 1; i >= 0; i--) {
         const f = powerFruits[i];
         const { isoX, isoY } = toIso(f.x, f.y, 6 + Math.sin(frame * 0.1) * 3);
@@ -435,9 +451,9 @@ function DinoGame() {
 
           if (f.powerType === 'HEART_BOOST') {
             setPlayerHp((prev) => Math.min(maxHp, prev + 2));
-            setActiveFruitText('❤️ VIDA EXTRA +2 ADICIONADA!');
+            setActiveFruitText('❤️ VIDA EXTRA +2 BARRAS!');
           } else {
-            setActiveFruitText(`✨ PODER COMBINADO: ${f.powerType}!`);
+            setActiveFruitText(`✨ PODER ADICIONADO: ${f.powerType}!`);
           }
 
           createParticles(f.x, f.y, f.color, 20);
@@ -446,7 +462,7 @@ function DinoGame() {
         }
       }
 
-      // --- Z-SORTING & RENDERIZAÇÃO ---
+      // Z-Sorting & Renderização
       const renderList = [];
 
       for (let r = 0; r < MAP_SIZE; r++) {
@@ -472,7 +488,7 @@ function DinoGame() {
         });
 
         if (Math.hypot(slime.x - ghost.x, slime.y - ghost.y) < 16) {
-          if (isTitan || slime.powers.includes('GHOST_EATER')) {
+          if (isTitan) {
             ghost.active = false;
             currentScore += 500;
             setScore(currentScore);
@@ -506,7 +522,7 @@ function DinoGame() {
         } else if (item.type === 'SLIME') {
           const { isoX: sX, isoY: sY } = toIso(slime.x, slime.y, 12);
           const squish = Math.sin(frame * 0.3) * 1.5;
-          const auraColor = isTitan ? '#bd00ff' : slime.powers.length > 0 ? '#34d399' : '#10b981';
+          const auraColor = isTitan ? '#bd00ff' : '#10b981';
 
           ctx.save();
           ctx.shadowColor = auraColor;
@@ -533,7 +549,7 @@ function DinoGame() {
 
           ctx.save();
           ctx.shadowColor = gColor;
-          ctx.shadowBlur = 14;
+          ctx.shadowBlur = 16;
           ctx.fillStyle = gColor;
 
           ctx.beginPath();
@@ -587,13 +603,12 @@ function DinoGame() {
     };
   }, [gameState, level]);
 
-  // Controles de toque fluídos por arrastar no celular
+  // Controles de toque fluídos por arrastar ou deslizar na tela
   const handleTouchStart = (e) => {
     if (gameState !== 'PLAYING') return;
     const touch = e.touches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY };
     setIsDragging(true);
-    setJoyPos({ x: touch.clientX, y: touch.clientY });
   };
 
   const handleTouchMove = (e) => {
@@ -602,12 +617,7 @@ function DinoGame() {
     const dX = touch.clientX - touchStartRef.current.x;
     const dY = touch.clientY - touchStartRef.current.y;
 
-    const limit = 25;
-    const clampedX = Math.max(-limit, Math.min(limit, dX));
-    const clampedY = Math.max(-limit, Math.min(limit, dY));
-    setJoyPos({ x: touchStartRef.current.x + clampedX, y: touchStartRef.current.y + clampedY });
-
-    if (Math.abs(dX) > 5 || Math.abs(dY) > 5) {
+    if (Math.abs(dX) > 10 || Math.abs(dY) > 10) {
       if (Math.abs(dX) > Math.abs(dY)) {
         if (dX > 0) window.triggerAction && window.triggerAction('RIGHT');
         else window.triggerAction && window.triggerAction('LEFT');
@@ -619,9 +629,7 @@ function DinoGame() {
     }
   };
 
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-  };
+  const handleTouchEnd = () => setIsDragging(false);
 
   return (
     <div 
@@ -670,25 +678,31 @@ function DinoGame() {
         </div>
       </div>
 
-      {/* ÁREA DE JOGO LANDSCAPE FULLSCREEN OTIMIZADA */}
+      {/* ÁREA DE JOGO LANDSCAPE FULLSCREEN */}
       <div 
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative flex-1 min-h-[320px] sm:min-h-[400px] flex items-center justify-center select-none touch-none"
       >
+        {ghostAlert && (
+          <div className="absolute top-3 bg-red-600 text-white px-4 py-1.5 font-bold rounded-xl z-40 text-xs animate-bounce shadow-2xl border border-red-400">
+            {ghostAlert}
+          </div>
+        )}
+
         {activeFruitText && (
-          <div className="absolute top-4 bg-pink-500/90 text-white px-3 py-1 font-bold rounded-lg z-30 text-xs animate-pulse shadow-lg">
+          <div className="absolute top-12 bg-pink-500/90 text-white px-3 py-1 font-bold rounded-lg z-30 text-xs animate-pulse shadow-lg">
             {activeFruitText}
           </div>
         )}
 
-        {/* TELA DE INÍCIO COM FULLSCREEN FORÇADO */}
+        {/* TELA DE INÍCIO */}
         {gameState === 'IDLE' && (
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME 3D ULTRA FLUID</h2>
+            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME 3D GRID-SNAP</h2>
             <p className="text-zinc-300 font-sans text-xs sm:text-sm max-w-md leading-relaxed">
-              Clique abaixo para entrar em **Tela Cheia Horizontal** instantânea e jogar com movimentação sub-tile livre de travamentos!
+              Movimentação por linhas fluida (sem travamentos na base central), fantasmas inteligentes que mudam de cor e usam poderes dinâmicos!
             </p>
             <button
               onClick={handleStartGame}
@@ -745,16 +759,6 @@ function DinoGame() {
             >
               TENTAR NOVAMENTE
             </button>
-          </div>
-        )}
-
-        {/* INDICADOR VISUAL DO JOYSTICK TÁTIL */}
-        {isDragging && gameState === 'PLAYING' && (
-          <div 
-            className="absolute w-12 h-12 rounded-full border-2 border-emerald-400/70 bg-emerald-500/20 pointer-events-none z-40 transform -translate-x-1/2 -translate-y-1/2 transition-all duration-75"
-            style={{ left: `${joyPos.x}px`, top: `${joyPos.y}px` }}
-          >
-            <div className="absolute w-4 h-4 bg-emerald-400 rounded-full shadow-[0_0_12px_#34d399] top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
           </div>
         )}
 
