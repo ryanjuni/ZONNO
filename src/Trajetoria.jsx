@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// --- MINI-GAME: PAC-SLIME 3D DUAL-MODE (DRAG-TO-STEER MOBILE & CLICK WAYPOINT PC) ---
+// --- MINI-GAME: PAC-SLIME 3D DUAL-MODE (MOBILE HORIZONTAL OPTIMIZED) ---
 function DinoGame() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  const [gameState, setGameState] = useState('IDLE'); // 'IDLE', 'PLAYING', 'PAUSED', 'LEVEL_WIN', 'GAMEOVER'
+  const [gameState, setGameState] = useState('IDLE');
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [playerHp, setPlayerHp] = useState(8);
@@ -14,14 +14,11 @@ function DinoGame() {
   const [caughtCount, setCaughtCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Estados de Poderes e Alertas
   const [activePowers, setActivePowers] = useState([]);
   const [activeFruitText, setActiveFruitText] = useState('');
   const [ghostAlert, setGhostAlert] = useState('');
 
-  // Referências para controle por arrastar o dedo (Drag-to-Steer Mobile) e Touch
   const isDraggingRef = useRef(false);
-  const dragTargetRef = useRef(null);
 
   const handleStartGame = async () => {
     setScore(0);
@@ -39,7 +36,7 @@ function DinoGame() {
         else if (elem.webkitRequestFullscreen) await elem.webkitRequestFullscreen();
         setIsFullscreen(true);
       } catch (err) {
-        console.log('Fullscreen ativado:', err);
+        console.log('Fullscreen automático retido pelo navegador:', err);
       }
     }
 
@@ -47,7 +44,7 @@ function DinoGame() {
       try {
         await window.screen.orientation.lock('landscape');
       } catch (err) {
-        console.log('Landscape lock:', err);
+        console.log('Bloqueio landscape nativo não suportado:', err);
       }
     }
   };
@@ -74,8 +71,14 @@ function DinoGame() {
     const ctx = canvas.getContext('2d');
 
     let animationFrameId;
-    let width = (canvas.width = canvas.parentElement.clientWidth);
-    let height = (canvas.height = canvas.parentElement.clientHeight || Math.min(window.innerHeight * 0.85, 420));
+    
+    // Configuração inicial segura de dimensões
+    const updateCanvasSize = () => {
+      if (!canvas || !canvas.parentElement) return;
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+    };
+    updateCanvasSize();
 
     const MAP_SIZE = 13;
     const TILE_SIZE = 26;
@@ -101,18 +104,16 @@ function DinoGame() {
       return MAZE_MAP[gy][gx] === 0;
     };
 
-    // --- PERSONAGEM PAC-SLIME HÍBRIDO (WAYPOINT + DRAG-TO-STEER) ---
     const slime = {
       x: 1.5 * TILE_SIZE,
       y: 1.5 * TILE_SIZE,
-      path: [], // Linha longa de waypoints para seguir
+      path: [], 
       speed: 2.2 + level * 0.1,
       powers: [],
       invulnerableTimer: 0,
       stuckFrames: 0,
     };
 
-    // BFS Robusto com alcance estendido para linhas longas
     const findPath = (startGx, startGy, targetGx, targetGy) => {
       if (!isWalkable(targetGx, targetGy)) return [];
       const queue = [[startGx, startGy]];
@@ -156,12 +157,11 @@ function DinoGame() {
       const relX = (worldX - slime.x) / TILE_SIZE;
       const relY = (worldY - slime.y) / TILE_SIZE;
 
-      const isoX = width / 2 + (relX - relY) * (TILE_SIZE * 1.3);
-      const isoY = height / 2 + (relX + relY) * (TILE_SIZE * 0.65) - heightOffset;
+      const isoX = canvas.width / 2 + (relX - relY) * (TILE_SIZE * 1.3);
+      const isoY = canvas.height / 2 + (relX + relY) * (TILE_SIZE * 0.65) - heightOffset;
       return { isoX, isoY };
     };
 
-    // Conversão de pixel da tela para coordenada do labirinto
     const getTileFromScreenCoord = (clientX, clientY) => {
       const rect = canvas.getBoundingClientRect();
       const clickX = clientX - rect.left;
@@ -182,60 +182,57 @@ function DinoGame() {
           }
         }
       }
-      return closestCell && minDst < TILE_SIZE * 1.5 ? closestCell : null;
+      return closestCell && minDst < TILE_SIZE * 1.8 ? closestCell : null; // Tolerância maior para o dedo
     };
 
-    // Handlers de interação unificados (PC e Mobile)
+    // --- CONTROLES UNIFICADOS (POINTER EVENTS) - RESOLVE BUGS NO CELULAR E PC ---
+    const updatePathFromEvent = (e) => {
+      const targetCell = getTileFromScreenCoord(e.clientX, e.clientY);
+      if (targetCell) {
+        const lastPoint = slime.path.length > 0 ? slime.path[slime.path.length - 1] : { x: slime.x, y: slime.y };
+        const lastGx = Math.floor(lastPoint.x / TILE_SIZE);
+        const lastGy = Math.floor(lastPoint.y / TILE_SIZE);
+        
+        if (lastGx !== targetCell.c || lastGy !== targetCell.r) {
+          const extension = findPath(lastGx, lastGy, targetCell.c, targetCell.r);
+          if (extension.length > 1) {
+            const formattedExtension = extension.slice(1).map(([gx, gy]) => ({ x: (gx + 0.5) * TILE_SIZE, y: (gy + 0.5) * TILE_SIZE }));
+            slime.path = slime.path.concat(formattedExtension);
+          }
+        }
+      }
+    };
+
     const handlePointerDown = (e) => {
       if (gameState !== 'PLAYING') return;
       isDraggingRef.current = true;
-      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-      if (clientX && clientY) {
-        const targetCell = getTileFromScreenCoord(clientX, clientY);
-        if (targetCell) {
-          const startGx = Math.floor(slime.x / TILE_SIZE);
-          const startGy = Math.floor(slime.y / TILE_SIZE);
-          const newPath = findPath(startGx, startGy, targetCell.c, targetCell.r);
-          if (newPath.length > 0) {
-            slime.path = newPath.map(([gx, gy]) => ({ x: (gx + 0.5) * TILE_SIZE, y: (gy + 0.5) * TILE_SIZE }));
-          }
+      canvas.setPointerCapture(e.pointerId); // Garante que o arrastar não saia do canvas
+      
+      const targetCell = getTileFromScreenCoord(e.clientX, e.clientY);
+      if (targetCell) {
+        const startGx = Math.floor(slime.x / TILE_SIZE);
+        const startGy = Math.floor(slime.y / TILE_SIZE);
+        const newPath = findPath(startGx, startGy, targetCell.c, targetCell.r);
+        if (newPath.length > 0) {
+          slime.path = newPath.map(([gx, gy]) => ({ x: (gx + 0.5) * TILE_SIZE, y: (gy + 0.5) * TILE_SIZE }));
         }
       }
     };
 
     const handlePointerMove = (e) => {
       if (!isDraggingRef.current || gameState !== 'PLAYING') return;
-      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-      if (clientX && clientY) {
-        const targetCell = getTileFromScreenCoord(clientX, clientY);
-        if (targetCell) {
-          const lastPoint = slime.path.length > 0 ? slime.path[slime.path.length - 1] : { x: slime.x, y: slime.y };
-          const lastGx = Math.floor(lastPoint.x / TILE_SIZE);
-          const lastGy = Math.floor(lastPoint.y / TILE_SIZE);
-          if (lastGx !== targetCell.c || lastGy !== targetCell.r) {
-            const extension = findPath(lastGx, lastGy, targetCell.c, targetCell.r);
-            if (extension.length > 1) {
-              const formattedExtension = extension.slice(1).map(([gx, gy]) => ({ x: (gx + 0.5) * TILE_SIZE, y: (gy + 0.5) * TILE_SIZE }));
-              slime.path = slime.path.concat(formattedExtension);
-            }
-          }
-        }
-      }
+      updatePathFromEvent(e);
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (e) => {
       isDraggingRef.current = false;
+      canvas.releasePointerCapture(e.pointerId);
     };
 
-    canvas.addEventListener('mousedown', handlePointerDown);
-    canvas.addEventListener('mousemove', handlePointerMove);
-    window.addEventListener('mouseup', handlePointerUp);
-
-    canvas.addEventListener('touchstart', handlePointerDown, { passive: true });
-    canvas.addEventListener('touchmove', handlePointerMove, { passive: true });
-    window.addEventListener('touchend', handlePointerUp);
+    canvas.addEventListener('pointerdown', handlePointerDown);
+    canvas.addEventListener('pointermove', handlePointerMove);
+    canvas.addEventListener('pointerup', handlePointerUp);
+    canvas.addEventListener('pointercancel', handlePointerUp);
 
     const createParticles = (worldX, worldY, color = '#ffea00', count = 10) => {
       const { isoX, isoY } = toIso(worldX, worldY);
@@ -288,7 +285,6 @@ function DinoGame() {
       ctx.fill();
     };
 
-    // --- FANTASMAS COM ANTIBUG TOTAL ---
     const smartGhostAbilities = [
       { name: 'SUPER DASH', color: '#ff0055' },
       { name: 'TELEPORTE QUANTUM', color: '#00ffff' },
@@ -408,7 +404,7 @@ function DinoGame() {
 
     const gameLoop = () => {
       ctx.fillStyle = '#020617';
-      ctx.fillRect(0, 0, width, height);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       frame++;
       if (slime.invulnerableTimer > 0) slime.invulnerableTimer--;
@@ -438,7 +434,6 @@ function DinoGame() {
         }
       }
 
-      // Spawn de Frutas
       if (frame % 130 === 0) {
         const freeCells = [];
         for (let r = 0; r < MAP_SIZE; r++) {
@@ -459,7 +454,6 @@ function DinoGame() {
         }
       }
 
-      // Renderização do Chão e Guia de Rota Longa
       for (let r = 0; r < MAP_SIZE; r++) {
         for (let c = 0; c < MAP_SIZE; c++) {
           const { isoX, isoY } = toIso((c + 0.5) * TILE_SIZE, (r + 0.5) * TILE_SIZE);
@@ -485,7 +479,6 @@ function DinoGame() {
         }
       }
 
-      // Desenha linha de rota estendida visível
       if (slime.path.length > 0) {
         ctx.strokeStyle = '#34d399';
         ctx.lineWidth = 3;
@@ -501,7 +494,6 @@ function DinoGame() {
         ctx.setLineDash([]);
       }
 
-      // Pac-Dots & Ímã
       for (let i = pacDots.length - 1; i >= 0; i--) {
         const dot = pacDots[i];
         if (slime.powers.includes('MAGNET_STARS') && Math.hypot(slime.x - dot.x, slime.y - dot.y) < 70) {
@@ -532,7 +524,6 @@ function DinoGame() {
         return;
       }
 
-      // Frutas
       for (let i = powerFruits.length - 1; i >= 0; i--) {
         const f = powerFruits[i];
         const { isoX, isoY } = toIso(f.x, f.y, 6 + Math.sin(frame * 0.1) * 3);
@@ -565,7 +556,6 @@ function DinoGame() {
         }
       }
 
-      // Z-Sorting & Renderização
       const renderList = [];
 
       for (let r = 0; r < MAP_SIZE; r++) {
@@ -690,23 +680,25 @@ function DinoGame() {
 
     gameLoop();
 
+    // Redimensionamento flexível com timeout para celulares ao virar a tela
     const handleResize = () => {
-      width = canvas.width = canvas.parentElement.clientWidth;
-      height = canvas.height = canvas.parentElement.clientHeight || Math.min(window.innerHeight * 0.85, 420);
+      setTimeout(() => {
+        updateCanvasSize();
+      }, 150);
     };
 
     window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
       if (canvas) {
-        canvas.removeEventListener('mousedown', handlePointerDown);
-        canvas.removeEventListener('mousemove', handlePointerMove);
-        canvas.removeEventListener('touchstart', handlePointerDown);
-        canvas.removeEventListener('touchmove', handlePointerMove);
+        canvas.removeEventListener('pointerdown', handlePointerDown);
+        canvas.removeEventListener('pointermove', handlePointerMove);
+        canvas.removeEventListener('pointerup', handlePointerUp);
+        canvas.removeEventListener('pointercancel', handlePointerUp);
       }
-      window.removeEventListener('mouseup', handlePointerUp);
-      window.removeEventListener('touchend', handlePointerUp);
       cancelAnimationFrame(animationFrameId);
     };
   }, [gameState, level]);
@@ -716,11 +708,10 @@ function DinoGame() {
       ref={containerRef}
       className={`bg-zinc-950/95 border border-zinc-800/90 rounded-2xl font-mono text-xs shadow-2xl backdrop-blur-xl transition-all duration-300 overflow-hidden select-none ${
         gameState === 'PLAYING' && isFullscreen 
-          ? 'fixed inset-0 z-50 rounded-none border-none p-2 sm:p-4 flex flex-col justify-between w-screen h-screen m-0' 
+          ? 'fixed inset-0 z-50 rounded-none border-none p-2 sm:p-4 flex flex-col justify-between w-[100dvw] h-[100dvh] m-0' 
           : 'p-4 sm:p-6 space-y-4 max-w-full'
       }`}
     >
-      {/* HUD SUPERIOR */}
       <div className="flex flex-wrap items-center justify-between border-b border-zinc-800/80 pb-2 gap-2 shrink-0">
         <div className="flex items-center space-x-3">
           <span className="w-2.5 h-2.5 rounded bg-emerald-400 animate-pulse" />
@@ -758,8 +749,8 @@ function DinoGame() {
         </div>
       </div>
 
-      {/* ÁREA DE JOGO LANDSCAPE FULLSCREEN COM ARRASTAR E CLIQUE HÍBRIDO (PC & MOBILE) */}
-      <div className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative flex-1 min-h-[320px] sm:min-h-[400px] flex items-center justify-center select-none touch-none">
+      <div className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative flex-1 min-h-[320px] sm:min-h-[400px] flex items-center justify-center select-none">
+        
         {ghostAlert && (
           <div className="absolute top-3 bg-red-600 text-white px-4 py-1.5 font-bold rounded-xl z-40 text-xs animate-bounce shadow-2xl border border-red-400">
             {ghostAlert}
@@ -772,12 +763,11 @@ function DinoGame() {
           </div>
         )}
 
-        {/* TELA DE INÍCIO */}
         {gameState === 'IDLE' && (
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME 3D DUAL-MODE</h2>
+            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME MOBILE FIX</h2>
             <p className="text-zinc-300 font-sans text-xs sm:text-sm max-w-md leading-relaxed">
-              **No PC ou no Celular:** Clique ou **mantenha o dedo pressionado e vá arrastando** pelo chão para o Slime seguir a linha estendida em tempo real! Zero travamentos.
+              Toque com o dedo e arraste pelo chão. Eventos otimizados para zero travamentos na tela do celular ao entrar na horizontal!
             </p>
             <button
               onClick={handleStartGame}
@@ -788,7 +778,6 @@ function DinoGame() {
           </div>
         )}
 
-        {/* TELA DE FASE CONCLUÍDA */}
         {gameState === 'LEVEL_WIN' && (
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
             <p className="text-emerald-400 font-bold text-lg tracking-widest uppercase">FASE {level - 1} VENCIDA!</p>
@@ -802,7 +791,6 @@ function DinoGame() {
           </div>
         )}
 
-        {/* TELA DE PAUSA */}
         {gameState === 'PAUSED' && (
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
             <p className="text-amber-400 font-bold text-lg tracking-widest uppercase">JOGO PAUSADO</p>
@@ -815,7 +803,6 @@ function DinoGame() {
           </div>
         )}
 
-        {/* TELA DE GAME OVER */}
         {gameState === 'GAMEOVER' && (
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
             <p className="text-red-500 font-bold text-lg tracking-widest uppercase">Game Over</p>
@@ -837,7 +824,12 @@ function DinoGame() {
           </div>
         )}
 
-        <canvas ref={canvasRef} className="w-full h-full block touch-none cursor-pointer" />
+        {/* touch-action: none é essencial para o browser mobile não bugar puxando a tela */}
+        <canvas 
+          ref={canvasRef} 
+          className="w-full h-full block cursor-pointer" 
+          style={{ touchAction: 'none' }}
+        />
       </div>
     </div>
   );
