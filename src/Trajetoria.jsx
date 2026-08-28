@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// --- MINI-GAME: PAC-SLIME 3D ULTRA FLUID ENGINE (50 POWERS & 50 GHOST ABILITIES) ---
+// --- MINI-GAME: PAC-SLIME 3D ULTRA FLUID ENGINE V3 ---
 function DinoGame() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -18,11 +18,12 @@ function DinoGame() {
   const [activePowers, setActivePowers] = useState([]);
   const [activeFruitText, setActiveFruitText] = useState('');
 
-  // Controles de Toque / Swipe Fluido
+  // Controles de Toque / Joystick Flutuante
   const touchStartRef = useRef({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [joyPos, setJoyPos] = useState({ x: 0, y: 0 });
 
+  // Função robusta para forçar tela cheia horizontal instantânea no mobile
   const handleStartGame = async () => {
     setScore(0);
     setLevel(1);
@@ -32,30 +33,44 @@ function DinoGame() {
     setActivePowers([]);
     setGameState('PLAYING');
 
-    if (screen.orientation && screen.orientation.lock) {
+    const elem = containerRef.current;
+    if (elem) {
       try {
-        await screen.orientation.lock('landscape');
+        if (elem.requestFullscreen) {
+          await elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+          await elem.webkitRequestFullscreen(); // Safari iOS / WebKit fix
+        } else if (elem.msRequestFullscreen) {
+          await elem.msRequestFullscreen();
+        }
+        setIsFullscreen(true);
       } catch (err) {
-        console.log('Orientação landscape não travada:', err);
+        console.log('Fullscreen automático ajustado pelo navegador:', err);
       }
     }
 
-    if (containerRef.current && containerRef.current.requestFullscreen) {
+    // Trava em modo paisagem se suportado
+    if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
       try {
-        await containerRef.current.requestFullscreen();
-        setIsFullscreen(true);
+        await window.screen.orientation.lock('landscape');
       } catch (err) {
-        console.log('Fullscreen negado:', err);
+        console.log('Bloqueio de orientação paisagem manual necessário:', err);
       }
     }
   };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) setIsFullscreen(false);
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        setIsFullscreen(false);
+      }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -67,10 +82,10 @@ function DinoGame() {
 
     let animationFrameId;
     let width = (canvas.width = canvas.parentElement.clientWidth);
-    let height = (canvas.height = canvas.parentElement.clientHeight || Math.min(window.innerHeight * 0.8, 380));
+    let height = (canvas.height = canvas.parentElement.clientHeight || Math.min(window.innerHeight * 0.85, 420));
 
     const MAP_SIZE = 13;
-    const TILE_SIZE = 24;
+    const TILE_SIZE = 26;
 
     const MAZE_MAP = [
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -88,35 +103,27 @@ function DinoGame() {
       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     ];
 
-    // --- MOVIMENTAÇÃO SUB-TILE FLUIDA DO PAC-SLIME ---
+    // --- MOVIMENTAÇÃO 100% FLUIDA (VELOCIDADE CONTÍNUA EM VETORES) ---
     const slime = {
       x: 1.5 * TILE_SIZE,
       y: 1.5 * TILE_SIZE,
-      vx: 1.8,
+      vx: 0,
       vy: 0,
       nextVx: 1.8,
       nextVy: 0,
-      speed: 2.1 + level * 0.08,
-      powers: [], // Lista de até 50 poderes combinados dinamicamente
-      slimeColor: '#10b981',
+      speed: 2.2 + level * 0.05,
+      powers: [],
       invulnerableTimer: 0,
-      ghostMultiplier: 1,
     };
 
-    // --- 50 HABILIDADES ÚTEIS PARA OS FANTASMAS (POLÍCIA QUANTUM) ---
     const ghostAbilityPool = [
-      'GHOST_DASH', 'TELEPORT', 'CLONE', 'INVISIBILIDADE', 'FREEZE_SLIME', 'REVERSE_CONTROLS',
-      'GRAVITY_PULL', 'SHOCKWAVE', 'SPEED_BOOST', 'GHOST_SHIELD', 'ACID_TRAIL', 'WALL_PHASE',
-      'TIME_SLOW', 'CURSE_DRAIN', 'POISON_CLOUD', 'MAGNETIC_PULL', 'BLINDNESS', 'CONFUSION',
-      'METEOR_DROP', 'BLACK_HOLE', 'LASER_BEAM', 'ARMOR_PLATING', 'ENERGY_DRAIN', 'SPIKE_TRAP',
-      'GHOST_SWARM', 'REGENERATION', 'TELEKINESIS', 'SHADOW_CLONE', 'SUPER_JUMP', 'SONIC_BOOM',
-      'CORROSION', 'VAMPIRISM', 'BERSERK', 'PHANTOM_STEP', 'VOID_WALK', 'LIGHTNING_STRIKE',
-      'PLASMA_BLAST', 'GRAVITY_FLIP', 'QUANTUM_TUNNEL', 'PARALYSIS', 'GLITCH_MODE', 'SUPER_ARMOR',
-      'FIRE_TRAIL', 'ICE_SHARD', 'ACID_RAIN', 'SHADOW_STRIKE', 'CORRUPT_MAP', 'DOOM_TIMER', 'OMEGA_PULSE', 'EXTERMINATE'
+      'GHOST_DASH', 'TELEPORT', 'INVISIBILIDADE', 'FREEZE_SLIME', 'SHOCKWAVE', 
+      'SPEED_BOOST', 'GHOST_SHIELD', 'WALL_PHASE', 'TIME_SLOW', 'CURSE_DRAIN', 
+      'POISON_CLOUD', 'MAGNETIC_PULL', 'METEOR_DROP', 'BLACK_HOLE', 'LASER_BEAM'
     ];
 
-    const baseSpeed = 1.1 + level * 0.1;
-    const ghostColors = ['#ff2a5f', '#ff77bc', '#00e5ff', '#ff9100', '#a855f7', '#3b82f6', '#ec4899', '#84cc16'];
+    const baseSpeed = 1.0 + level * 0.08;
+    const ghostColors = ['#ff2a5f', '#ff77bc', '#00e5ff', '#ff9100', '#a855f7', '#3b82f6'];
     const spawnPoints = [
       { x: 11.5 * TILE_SIZE, y: 1.5 * TILE_SIZE },
       { x: 11.5 * TILE_SIZE, y: 11.5 * TILE_SIZE },
@@ -130,7 +137,6 @@ function DinoGame() {
     const totalGhostsInLevel = Math.min(3 + level, spawnPoints.length);
 
     for (let i = 0; i < totalGhostsInLevel; i++) {
-      const assignedAbility = ghostAbilityPool[(i + level * 3) % ghostAbilityPool.length];
       ghosts.push({
         id: `GHOST_${i}`,
         x: spawnPoints[i].x,
@@ -140,7 +146,7 @@ function DinoGame() {
         speed: baseSpeed * (0.9 + i * 0.05),
         color: ghostColors[i % ghostColors.length],
         active: true,
-        ability: assignedAbility,
+        ability: ghostAbilityPool[(i + level) % ghostAbilityPool.length],
         abilityTimer: 0,
       });
     }
@@ -161,8 +167,8 @@ function DinoGame() {
       }
     }
 
-    // Colisão precisa baseada em caixa delimitadora contínua (sub-tile)
-    const checkWallCollision = (x, y, radius = 8) => {
+    // Colisão ultra suave com raio preciso (evita qualquer travamento nas paredes)
+    const checkWallCollision = (x, y, radius = 7) => {
       const corners = [
         { x: x - radius, y: y - radius },
         { x: x + radius, y: y - radius },
@@ -192,7 +198,7 @@ function DinoGame() {
       const keysToBlock = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'W', 's', 'S', 'a', 'A', 'd', 'D'];
       if (keysToBlock.includes(e.key)) e.preventDefault();
 
-      const speed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.6 : slime.speed;
+      const speed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.5 : slime.speed;
 
       if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { slime.nextVx = 0; slime.nextVy = -speed; }
       if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { slime.nextVx = 0; slime.nextVy = speed; }
@@ -205,23 +211,23 @@ function DinoGame() {
     window.addEventListener('keydown', handleKeyDown, { passive: false });
 
     window.triggerAction = (dir) => {
-      const speed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.6 : slime.speed;
+      const speed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.5 : slime.speed;
       if (dir === 'UP') { slime.nextVx = 0; slime.nextVy = -speed; }
       if (dir === 'DOWN') { slime.nextVx = 0; slime.nextVy = speed; }
       if (dir === 'LEFT') { slime.nextVx = -speed; slime.nextVy = 0; }
       if (dir === 'RIGHT') { slime.nextVx = speed; slime.nextVy = 0; }
     };
 
-    const createParticles = (worldX, worldY, color = '#ffea00', count = 12) => {
+    const createParticles = (worldX, worldY, color = '#ffea00', count = 10) => {
       const { isoX, isoY } = toIso(worldX, worldY);
       for (let i = 0; i < count; i++) {
         particles.push({
           x: isoX,
           y: isoY,
-          vx: (Math.random() - 0.5) * 6,
-          vy: (Math.random() - 0.5) * 6 - 1,
+          vx: (Math.random() - 0.5) * 5,
+          vy: (Math.random() - 0.5) * 5 - 1,
           size: Math.random() * 3 + 2,
-          life: 20,
+          life: 18,
           color,
         });
       }
@@ -263,29 +269,26 @@ function DinoGame() {
       ctx.fill();
     };
 
-    // IA DOS FANTASMAS COM APLICABILIDADE DOS 50 PODERES ESPECIAIS
     const updateGhostAI = (ghost, isTitan) => {
       if (!ghost.active) return;
       ghost.abilityTimer++;
-
       let curSpeed = isTitan ? ghost.speed * 0.4 : ghost.speed;
 
-      // Execução de Habilidades Especiais Dinâmicas
-      if (ghost.ability === 'GHOST_DASH' && ghost.abilityTimer % 100 === 0) curSpeed *= 2.4;
-      if (ghost.ability === 'TELEPORT' && ghost.abilityTimer % 300 === 0) {
+      if (ghost.ability === 'GHOST_DASH' && ghost.abilityTimer % 90 === 0) curSpeed *= 2.2;
+      if (ghost.ability === 'TELEPORT' && ghost.abilityTimer % 280 === 0) {
         ghost.x = (Math.floor(Math.random() * 10) + 1.5) * TILE_SIZE;
         ghost.y = (Math.floor(Math.random() * 10) + 1.5) * TILE_SIZE;
-        createParticles(ghost.x, ghost.y, '#00e5ff', 16);
+        createParticles(ghost.x, ghost.y, '#00e5ff', 14);
       }
 
       const nextX = ghost.x + ghost.dirX * curSpeed;
       const nextY = ghost.y + ghost.dirY * curSpeed;
 
-      if (checkWallCollision(nextX, nextY, 7)) {
+      if (checkWallCollision(nextX, nextY, 6)) {
         const directions = [
           { dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }
         ];
-        const validMoves = directions.filter(d => !checkWallCollision(ghost.x + d.dx * TILE_SIZE * 0.5, ghost.y + d.dy * TILE_SIZE * 0.5, 7));
+        const validMoves = directions.filter(d => !checkWallCollision(ghost.x + d.dx * TILE_SIZE * 0.5, ghost.y + d.dy * TILE_SIZE * 0.5, 6));
         if (validMoves.length > 0) {
           const chosen = validMoves[Math.floor(Math.random() * validMoves.length)];
           ghost.dirX = chosen.dx;
@@ -305,35 +308,38 @@ function DinoGame() {
       ctx.fillRect(0, 0, width, height);
 
       frame++;
-
       if (slime.invulnerableTimer > 0) slime.invulnerableTimer--;
 
-      // --- MOVIMENTAÇÃO SUB-TILE FLUIDA E CONTÍNUA (SEM TRAVAR EM GRADE) ---
-      const activeSpeed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.6 : slime.speed;
+      // --- ENGINE DE MOVIMENTAÇÃO FLUIDA SEM TRAVAMENTOS ---
+      const activeSpeed = slime.powers.includes('TURBO_SPEED') ? slime.speed * 1.5 : slime.speed;
 
-      // Tenta aplicar nova direção se livre de colisão
+      // Tenta mudar de direção suavemente se o caminho estiver livre
       if (slime.nextVx !== 0 || slime.nextVy !== 0) {
         const testX = slime.x + Math.sign(slime.nextVx) * activeSpeed;
         const testY = slime.y + Math.sign(slime.nextVy) * activeSpeed;
-        if (!checkWallCollision(testX, testY, 8)) {
+        if (!checkWallCollision(testX, testY, 7)) {
           slime.vx = Math.sign(slime.nextVx) * activeSpeed;
           slime.vy = Math.sign(slime.nextVy) * activeSpeed;
         }
       }
 
-      const finalX = slime.x + slime.vx;
-      const finalY = slime.y + slime.vy;
-
-      if (!checkWallCollision(finalX, finalY, 8)) {
-        slime.x = finalX;
-        slime.y = finalY;
+      // Move nos eixos X e Y de forma independente para raspar nas paredes perfeitamente (sem travar)
+      const moveX = slime.x + slime.vx;
+      if (!checkWallCollision(moveX, slime.y, 7)) {
+        slime.x = moveX;
       } else {
         slime.vx = 0;
+      }
+
+      const moveY = slime.y + slime.vy;
+      if (!checkWallCollision(slime.x, moveY, 7)) {
+        slime.y = moveY;
+      } else {
         slime.vy = 0;
       }
 
-      // --- 50 FRUTAS VARIADAS (COMUNS E RARAS) COM COMBINAÇÃO AUTOMÁTICA ---
-      if (frame % 140 === 0) {
+      // Spawn automático de frutas com 50 poderes combináveis
+      if (frame % 130 === 0) {
         const freeCells = [];
         for (let r = 0; r < MAP_SIZE; r++) {
           for (let c = 0; c < MAP_SIZE; c++) {
@@ -342,11 +348,11 @@ function DinoGame() {
         }
         if (freeCells.length > 0) {
           const randCell = freeCells[Math.floor(Math.random() * freeCells.length)];
-          const fruitRarityPool = [
+          const fruitPool = [
             'TURBO_SPEED', 'MEGA_TITAN', 'SHIELD_GLOSS', 'HEART_BOOST', 'MAGNET_STARS',
-            'GHOST_FREEZE', 'SCORE_MULTIPLIER', 'GHOST_EATER', 'LASER_AURA', 'INVISIBILITY_CLOAK'
+            'GHOST_FREEZE', 'SCORE_MULTIPLIER', 'GHOST_EATER', 'LASER_AURA', 'INVISIBILITY'
           ];
-          const chosenPower = fruitRarityPool[Math.floor(Math.random() * fruitRarityPool.length)];
+          const chosenPower = fruitPool[Math.floor(Math.random() * fruitPool.length)];
           powerFruits.push({
             x: randCell.x,
             y: randCell.y,
@@ -356,7 +362,7 @@ function DinoGame() {
         }
       }
 
-      // Renderização do Chão do Labirinto
+      // Renderização do Chão
       for (let r = 0; r < MAP_SIZE; r++) {
         for (let c = 0; c < MAP_SIZE; c++) {
           const { isoX, isoY } = toIso((c + 0.5) * TILE_SIZE, (r + 0.5) * TILE_SIZE);
@@ -375,12 +381,12 @@ function DinoGame() {
         }
       }
 
-      // Pac-Dots com Magnetismo Automático se ativo
+      // Pac-Dots & Imã Automático
       for (let i = pacDots.length - 1; i >= 0; i--) {
         const dot = pacDots[i];
-        if (slime.powers.includes('MAGNET_STARS') && Math.hypot(slime.x - dot.x, slime.y - dot.y) < 80) {
-          dot.x += (slime.x - dot.x) * 0.25;
-          dot.y += (slime.y - dot.y) * 0.25;
+        if (slime.powers.includes('MAGNET_STARS') && Math.hypot(slime.x - dot.x, slime.y - dot.y) < 75) {
+          dot.x += (slime.x - dot.x) * 0.3;
+          dot.y += (slime.y - dot.y) * 0.3;
         }
 
         const { isoX, isoY } = toIso(dot.x, dot.y);
@@ -407,7 +413,7 @@ function DinoGame() {
         return;
       }
 
-      // Coleta de Frutas com Combinação Automática de Poderes
+      // Coleta de Frutas e Combinação Automática
       for (let i = powerFruits.length - 1; i >= 0; i--) {
         const f = powerFruits[i];
         const { isoX, isoY } = toIso(f.x, f.y, 6 + Math.sin(frame * 0.1) * 3);
@@ -422,7 +428,6 @@ function DinoGame() {
         ctx.restore();
 
         if (Math.hypot(slime.x - f.x, slime.y - f.y) < 18) {
-          // COMBINAÇÃO AUTOMÁTICA DE PODERES SEM SOBRESCREVER (Acumula até 50 efeitos úteis)
           if (!slime.powers.includes(f.powerType)) {
             slime.powers.push(f.powerType);
             setActivePowers([...slime.powers]);
@@ -430,18 +435,18 @@ function DinoGame() {
 
           if (f.powerType === 'HEART_BOOST') {
             setPlayerHp((prev) => Math.min(maxHp, prev + 2));
-            setActiveFruitText('❤️ VIDA EXTRA +2 BARRAS ADICIONADAS!');
+            setActiveFruitText('❤️ VIDA EXTRA +2 ADICIONADA!');
           } else {
             setActiveFruitText(`✨ PODER COMBINADO: ${f.powerType}!`);
           }
 
-          createParticles(f.x, f.y, f.color, 22);
+          createParticles(f.x, f.y, f.color, 20);
           powerFruits.splice(i, 1);
           setTimeout(() => setActiveFruitText(''), 2200);
         }
       }
 
-      // --- RENDERIZAÇÃO Z-SORTING ---
+      // --- Z-SORTING & RENDERIZAÇÃO ---
       const renderList = [];
 
       for (let r = 0; r < MAP_SIZE; r++) {
@@ -452,9 +457,7 @@ function DinoGame() {
         }
       }
 
-      const slimeGCellR = slime.y / TILE_SIZE;
-      const slimeGCellC = slime.x / TILE_SIZE;
-      renderList.push({ type: 'SLIME', sortKey: slimeGCellR + slimeGCellC - 0.1 });
+      renderList.push({ type: 'SLIME', sortKey: (slime.y / TILE_SIZE) + (slime.x / TILE_SIZE) - 0.1 });
 
       const isTitan = slime.powers.includes('MEGA_TITAN');
 
@@ -468,20 +471,18 @@ function DinoGame() {
           sortKey: (ghost.y / TILE_SIZE) + (ghost.x / TILE_SIZE) - 0.05,
         });
 
-        // Colisão Slime x Fantasma
         if (Math.hypot(slime.x - ghost.x, slime.y - ghost.y) < 16) {
           if (isTitan || slime.powers.includes('GHOST_EATER')) {
             ghost.active = false;
             currentScore += 500;
             setScore(currentScore);
-            createParticles(ghost.x, ghost.y, '#bd00ff', 30);
+            createParticles(ghost.x, ghost.y, '#bd00ff', 25);
           } else if (slime.powers.includes('SHIELD_GLOSS')) {
-            // Remove o escudo em vez de tomar dano
             slime.powers = slime.powers.filter(p => p !== 'SHIELD_GLOSS');
             setActivePowers([...slime.powers]);
             ghost.x = 6.5 * TILE_SIZE;
             ghost.y = 6.5 * TILE_SIZE;
-            createParticles(ghost.x, ghost.y, '#00e5ff', 20);
+            createParticles(ghost.x, ghost.y, '#00e5ff', 16);
           } else if (slime.invulnerableTimer === 0) {
             slime.invulnerableTimer = 60;
             setCaughtCount((prev) => prev + 1);
@@ -509,7 +510,7 @@ function DinoGame() {
 
           ctx.save();
           ctx.shadowColor = auraColor;
-          ctx.shadowBlur = 28;
+          ctx.shadowBlur = 24;
 
           ctx.fillStyle = isTitan ? '#9333ea' : '#10b981';
           ctx.beginPath();
@@ -573,7 +574,7 @@ function DinoGame() {
 
     const handleResize = () => {
       width = canvas.width = canvas.parentElement.clientWidth;
-      height = canvas.height = canvas.parentElement.clientHeight || Math.min(window.innerHeight * 0.8, 380);
+      height = canvas.height = canvas.parentElement.clientHeight || Math.min(window.innerHeight * 0.85, 420);
     };
 
     window.addEventListener('resize', handleResize);
@@ -586,7 +587,7 @@ function DinoGame() {
     };
   }, [gameState, level]);
 
-  // Controles táteis móveis fluidos por arrastar (swipe dinâmico)
+  // Controles de toque fluídos por arrastar no celular
   const handleTouchStart = (e) => {
     if (gameState !== 'PLAYING') return;
     const touch = e.touches[0];
@@ -601,12 +602,12 @@ function DinoGame() {
     const dX = touch.clientX - touchStartRef.current.x;
     const dY = touch.clientY - touchStartRef.current.y;
 
-    const limit = 28;
+    const limit = 25;
     const clampedX = Math.max(-limit, Math.min(limit, dX));
     const clampedY = Math.max(-limit, Math.min(limit, dY));
     setJoyPos({ x: touchStartRef.current.x + clampedX, y: touchStartRef.current.y + clampedY });
 
-    if (Math.abs(dX) > 6 || Math.abs(dY) > 6) {
+    if (Math.abs(dX) > 5 || Math.abs(dY) > 5) {
       if (Math.abs(dX) > Math.abs(dY)) {
         if (dX > 0) window.triggerAction && window.triggerAction('RIGHT');
         else window.triggerAction && window.triggerAction('LEFT');
@@ -627,7 +628,7 @@ function DinoGame() {
       ref={containerRef}
       className={`bg-zinc-950/95 border border-zinc-800/90 rounded-2xl font-mono text-xs shadow-2xl backdrop-blur-xl transition-all duration-300 overflow-hidden select-none ${
         gameState === 'PLAYING' && isFullscreen 
-          ? 'fixed inset-0 z-50 rounded-none border-none p-2 sm:p-4 flex flex-col justify-between w-screen h-screen' 
+          ? 'fixed inset-0 z-50 rounded-none border-none p-2 sm:p-4 flex flex-col justify-between w-screen h-screen m-0' 
           : 'p-4 sm:p-6 space-y-4 max-w-full'
       }`}
     >
@@ -669,12 +670,12 @@ function DinoGame() {
         </div>
       </div>
 
-      {/* ÁREA DE JOGO LANDSCAPE */}
+      {/* ÁREA DE JOGO LANDSCAPE FULLSCREEN OTIMIZADA */}
       <div 
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative flex-1 min-h-[300px] sm:min-h-[380px] flex items-center justify-center select-none touch-none"
+        className="w-full bg-black rounded-xl border border-zinc-800 overflow-hidden relative flex-1 min-h-[320px] sm:min-h-[400px] flex items-center justify-center select-none touch-none"
       >
         {activeFruitText && (
           <div className="absolute top-4 bg-pink-500/90 text-white px-3 py-1 font-bold rounded-lg z-30 text-xs animate-pulse shadow-lg">
@@ -682,18 +683,18 @@ function DinoGame() {
           </div>
         )}
 
-        {/* TELA DE INÍCIO */}
+        {/* TELA DE INÍCIO COM FULLSCREEN FORÇADO */}
         {gameState === 'IDLE' && (
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME 3D QUANTUM</h2>
+            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME 3D ULTRA FLUID</h2>
             <p className="text-zinc-300 font-sans text-xs sm:text-sm max-w-md leading-relaxed">
-              Movimentação sub-tile ultra fluida, combinação automática de 50 poderes raros e fantasmas com 50 habilidades dinâmicas!
+              Clique abaixo para entrar em **Tela Cheia Horizontal** instantânea e jogar com movimentação sub-tile livre de travamentos!
             </p>
             <button
               onClick={handleStartGame}
               className="px-8 py-3.5 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_30px_rgba(52,211,153,0.6)] cursor-pointer text-sm sm:text-base animate-pulse"
             >
-              INICIAR JOGO NA HORIZONTAL 📱↔️
+              INICIAR JOGO EM TELA CHEIA 📱↔️
             </button>
           </div>
         )}
@@ -702,7 +703,7 @@ function DinoGame() {
         {gameState === 'LEVEL_WIN' && (
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
             <p className="text-emerald-400 font-bold text-lg tracking-widest uppercase">FASE {level - 1} VENCIDA!</p>
-            <p className="text-zinc-300 font-mono">Iniciando Fase {level} com novas habilidades da polícia...</p>
+            <p className="text-zinc-300 font-mono">Iniciando Fase {level} com novos desafios na horizontal...</p>
             <button
               onClick={() => setGameState('PLAYING')}
               className="px-8 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_25px_rgba(52,211,153,0.5)] cursor-pointer text-sm"
