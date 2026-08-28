@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// --- MINI-GAME: PAC-SLIME 3D DUAL-MODE (MOBILE HORIZONTAL OPTIMIZED) ---
+// --- MINI-GAME: PAC-SLIME 3D DUAL-MODE (CASUAL SPEED + EXIT SYSTEM) ---
 function DinoGame() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -49,10 +49,43 @@ function DinoGame() {
     }
   };
 
+  // --- NOVA FUNÇÃO PARA FINALIZAR O JOGO E SAIR DO FULLSCREEN ---
+  const handleQuitGame = async () => {
+    // Tenta sair da tela cheia
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      try {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen();
+        }
+      } catch (err) {
+        console.log('Erro ao sair do fullscreen:', err);
+      }
+    }
+
+    // Desbloqueia a rotação da tela no celular
+    if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+      try {
+        window.screen.orientation.unlock();
+      } catch (err) {
+        console.log('Erro ao desbloquear orientação:', err);
+      }
+    }
+
+    // Reseta o estado para a tela inicial
+    setIsFullscreen(false);
+    setGameState('IDLE');
+  };
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && !document.webkitFullscreenElement) {
         setIsFullscreen(false);
+        // Opcional: Se quiser que o jogo pause ao sair do fullscreen pelo "Esc" ou botão nativo do celular
+        if (gameState === 'PLAYING') {
+          setGameState('PAUSED');
+        }
       }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -61,7 +94,7 @@ function DinoGame() {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
-  }, []);
+  }, [gameState]);
 
   useEffect(() => {
     if (gameState !== 'PLAYING') return;
@@ -72,7 +105,6 @@ function DinoGame() {
 
     let animationFrameId;
     
-    // Configuração inicial segura de dimensões
     const updateCanvasSize = () => {
       if (!canvas || !canvas.parentElement) return;
       canvas.width = canvas.parentElement.clientWidth;
@@ -108,7 +140,7 @@ function DinoGame() {
       x: 1.5 * TILE_SIZE,
       y: 1.5 * TILE_SIZE,
       path: [], 
-      speed: 2.2 + level * 0.1,
+      speed: 1.4 + level * 0.05, 
       powers: [],
       invulnerableTimer: 0,
       stuckFrames: 0,
@@ -182,10 +214,9 @@ function DinoGame() {
           }
         }
       }
-      return closestCell && minDst < TILE_SIZE * 1.8 ? closestCell : null; // Tolerância maior para o dedo
+      return closestCell && minDst < TILE_SIZE * 1.8 ? closestCell : null;
     };
 
-    // --- CONTROLES UNIFICADOS (POINTER EVENTS) - RESOLVE BUGS NO CELULAR E PC ---
     const updatePathFromEvent = (e) => {
       const targetCell = getTileFromScreenCoord(e.clientX, e.clientY);
       if (targetCell) {
@@ -206,7 +237,7 @@ function DinoGame() {
     const handlePointerDown = (e) => {
       if (gameState !== 'PLAYING') return;
       isDraggingRef.current = true;
-      canvas.setPointerCapture(e.pointerId); // Garante que o arrastar não saia do canvas
+      canvas.setPointerCapture(e.pointerId);
       
       const targetCell = getTileFromScreenCoord(e.clientX, e.clientY);
       if (targetCell) {
@@ -292,7 +323,7 @@ function DinoGame() {
       { name: 'BERSERK SPEED', color: '#ff9900' }
     ];
 
-    const baseSpeed = 0.95 + level * 0.07;
+    const baseSpeed = 0.7 + level * 0.03; 
     const spawnPoints = [
       { x: 11.5 * TILE_SIZE, y: 1.5 * TILE_SIZE },
       { x: 11.5 * TILE_SIZE, y: 11.5 * TILE_SIZE },
@@ -345,7 +376,7 @@ function DinoGame() {
       if (!ghost.active) return;
       ghost.abilityTimer++;
 
-      if (ghost.abilityTimer % 240 === 0) {
+      if (ghost.abilityTimer % 280 === 0) {
         ghost.isUsingAbility = true;
         ghost.color = ghost.abilityColor;
         setGhostAlert(`👻 ${ghost.id} usou ${ghost.abilityName}!`);
@@ -353,12 +384,12 @@ function DinoGame() {
           ghost.isUsingAbility = false;
           ghost.color = ghost.originalColor;
           setGhostAlert('');
-        }, 3000);
+        }, 2500);
       }
 
       let curSpeed = isTitan ? ghost.speed * 0.4 : ghost.speed;
-      if (ghost.isUsingAbility && ghost.abilityName === 'SUPER DASH') curSpeed *= 2.2;
-      if (ghost.isUsingAbility && ghost.abilityName === 'TELEPORTE QUANTUM' && ghost.abilityTimer % 90 === 0) {
+      if (ghost.isUsingAbility && ghost.abilityName === 'SUPER DASH') curSpeed *= 1.8; 
+      if (ghost.isUsingAbility && ghost.abilityName === 'TELEPORTE QUANTUM' && ghost.abilityTimer % 120 === 0) {
         ghost.x = (Math.floor(Math.random() * 10) + 1.5) * TILE_SIZE;
         ghost.y = (Math.floor(Math.random() * 10) + 1.5) * TILE_SIZE;
       }
@@ -680,7 +711,6 @@ function DinoGame() {
 
     gameLoop();
 
-    // Redimensionamento flexível com timeout para celulares ao virar a tela
     const handleResize = () => {
       setTimeout(() => {
         updateCanvasSize();
@@ -707,8 +737,8 @@ function DinoGame() {
     <div 
       ref={containerRef}
       className={`bg-zinc-950/95 border border-zinc-800/90 rounded-2xl font-mono text-xs shadow-2xl backdrop-blur-xl transition-all duration-300 overflow-hidden select-none ${
-        gameState === 'PLAYING' && isFullscreen 
-          ? 'fixed inset-0 z-50 rounded-none border-none p-2 sm:p-4 flex flex-col justify-between w-[100dvw] h-[100dvh] m-0' 
+        gameState === 'PLAYING' || gameState === 'PAUSED' || gameState === 'GAMEOVER' || gameState === 'LEVEL_WIN' 
+          ? (isFullscreen ? 'fixed inset-0 z-50 rounded-none border-none p-2 sm:p-4 flex flex-col justify-between w-[100dvw] h-[100dvh] m-0' : 'p-4 sm:p-6 space-y-4 max-w-full')
           : 'p-4 sm:p-6 space-y-4 max-w-full'
       }`}
     >
@@ -733,19 +763,30 @@ function DinoGame() {
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2 sm:space-x-3">
           {activePowers.length > 0 && (
-            <span className="text-yellow-400 font-bold text-[10px] bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/30">
+            <span className="text-yellow-400 font-bold text-[10px] bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/30 hidden sm:inline">
               ⚡ ATIVOS: {activePowers.length}
             </span>
           )}
+          
+          {/* BOTÃO PAUSAR */}
           <button
             onClick={() => setGameState((prev) => (prev === 'PLAYING' ? 'PAUSED' : 'PLAYING'))}
             className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded border border-zinc-700 cursor-pointer"
           >
             {gameState === 'PAUSED' ? 'RETOMAR' : 'PAUSAR'}
           </button>
-          <span className="text-zinc-200 font-bold">SCORE: {score}</span>
+
+          {/* NOVO BOTÃO SAIR NO MENU SUPERIOR */}
+          <button
+            onClick={handleQuitGame}
+            className="px-3 py-1 bg-red-600/80 hover:bg-red-500 text-white font-bold rounded border border-red-500/50 cursor-pointer transition-colors"
+          >
+            SAIR
+          </button>
+          
+          <span className="text-zinc-200 font-bold hidden sm:inline">SCORE: {score}</span>
         </div>
       </div>
 
@@ -765,15 +806,15 @@ function DinoGame() {
 
         {gameState === 'IDLE' && (
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME MOBILE FIX</h2>
+            <h2 className="text-emerald-400 font-bold text-xl sm:text-2xl tracking-wider uppercase">PAC-SLIME: ACESSÍVEL</h2>
             <p className="text-zinc-300 font-sans text-xs sm:text-sm max-w-md leading-relaxed">
-              Toque com o dedo e arraste pelo chão. Eventos otimizados para zero travamentos na tela do celular ao entrar na horizontal!
+              Arraste suavemente no chão para desenhar a rota do Slime. Você pode pausar ou <strong>sair do jogo a qualquer momento</strong> no menu superior.
             </p>
             <button
               onClick={handleStartGame}
               className="px-8 py-3.5 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_30px_rgba(52,211,153,0.6)] cursor-pointer text-sm sm:text-base animate-pulse"
             >
-              INICIAR JOGO EM TELA CHEIA 📱💻
+              INICIAR JOGO 📱💻
             </button>
           </div>
         )}
@@ -781,50 +822,69 @@ function DinoGame() {
         {gameState === 'LEVEL_WIN' && (
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
             <p className="text-emerald-400 font-bold text-lg tracking-widest uppercase">FASE {level - 1} VENCIDA!</p>
-            <p className="text-zinc-300 font-mono">Iniciando Fase {level} com novos desafios na horizontal...</p>
-            <button
-              onClick={() => setGameState('PLAYING')}
-              className="px-8 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_25px_rgba(52,211,153,0.5)] cursor-pointer text-sm"
-            >
-              IR PARA FASE {level}
-            </button>
+            <p className="text-zinc-300 font-mono">Próxima fase gerada com sucesso...</p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setGameState('PLAYING')}
+                className="px-6 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_25px_rgba(52,211,153,0.5)] cursor-pointer text-sm"
+              >
+                IR PARA FASE {level}
+              </button>
+            </div>
           </div>
         )}
 
         {gameState === 'PAUSED' && (
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <p className="text-amber-400 font-bold text-lg tracking-widest uppercase">JOGO PAUSADO</p>
-            <button
-              onClick={() => setGameState('PLAYING')}
-              className="px-8 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_25px_rgba(52,211,153,0.5)] cursor-pointer text-sm"
-            >
-              CONTINUAR
-            </button>
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-6">
+            <p className="text-amber-400 font-bold text-2xl tracking-widest uppercase">JOGO PAUSADO</p>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
+                onClick={() => setGameState('PLAYING')}
+                className="px-8 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_25px_rgba(52,211,153,0.5)] cursor-pointer text-sm"
+              >
+                CONTINUAR
+              </button>
+              {/* BOTÃO FINALIZAR NA TELA DE PAUSA */}
+              <button
+                onClick={handleQuitGame}
+                className="px-8 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-all shadow-[0_0_25px_rgba(220,38,38,0.3)] cursor-pointer text-sm"
+              >
+                FINALIZAR JOGO
+              </button>
+            </div>
           </div>
         )}
 
         {gameState === 'GAMEOVER' && (
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <p className="text-red-500 font-bold text-lg tracking-widest uppercase">Game Over</p>
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-center p-6 space-y-6">
+            <p className="text-red-500 font-bold text-2xl tracking-widest uppercase">Game Over</p>
             <p className="text-zinc-300 font-mono">Pontuação Final: {score} | Capturas sofridas: {caughtCount}x</p>
-            <button
-              onClick={() => {
-                setLevel(1);
-                setPlayerHp(8);
-                setMaxHp(8);
-                setScore(0);
-                setCaughtCount(0);
-                setActivePowers([]);
-                setGameState('PLAYING');
-              }}
-              className="px-8 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_25px_rgba(52,211,153,0.5)] cursor-pointer text-sm"
-            >
-              TENTAR NOVAMENTE
-            </button>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
+                onClick={() => {
+                  setLevel(1);
+                  setPlayerHp(8);
+                  setMaxHp(8);
+                  setScore(0);
+                  setCaughtCount(0);
+                  setActivePowers([]);
+                  setGameState('PLAYING');
+                }}
+                className="px-6 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-bold rounded-xl transition-all shadow-[0_0_25px_rgba(52,211,153,0.5)] cursor-pointer text-sm"
+              >
+                TENTAR NOVAMENTE
+              </button>
+              {/* BOTÃO FINALIZAR NA TELA DE GAME OVER */}
+              <button
+                onClick={handleQuitGame}
+                className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-all cursor-pointer text-sm border border-zinc-700"
+              >
+                SAIR DO JOGO
+              </button>
+            </div>
           </div>
         )}
 
-        {/* touch-action: none é essencial para o browser mobile não bugar puxando a tela */}
         <canvas 
           ref={canvasRef} 
           className="w-full h-full block cursor-pointer" 
